@@ -33,15 +33,15 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   Future<void> _load() async {
-    final courses = await context.read<AppState>().courseService.getLecturerCourses();
-    if (!mounted) return;
-    setState(() {
-      _courses = courses;
-      _selectedCourse = widget.preselectedCourseId != null
-          ? _find(courses, widget.preselectedCourseId!)
-          : (courses.isNotEmpty ? courses.first : null);
-      _isLoading = false;
-    });
+    // final courses = await context.read<AppState>().courseService.getLecturerCourses();
+    // if (!mounted) return;
+    // setState(() {
+    //   _courses = courses;
+    //   _selectedCourse = widget.preselectedCourseId != null
+    //       ? _find(courses, widget.preselectedCourseId!)
+    //       : (courses.isNotEmpty ? courses.first : null);
+    //   _isLoading = false;
+    // });
   }
 
   Course? _find(List<Course> courses, String id) {
@@ -63,22 +63,22 @@ class _ExportScreenState extends State<ExportScreen> {
   }
 
   Future<void> _generate() async {
-    if (_selectedCourse == null) return;
-    setState(() {
-      _isExporting = true;
-      _result = null;
-    });
-    final result = await context.read<AppState>().exportService.generateExport(
-          courseId: _selectedCourse!.id,
-          format: _format,
-          startDate: _range?.start,
-          endDate: _range?.end,
-        );
-    if (!mounted) return;
-    setState(() {
-      _isExporting = false;
-      _result = result;
-    });
+    // if (_selectedCourse == null) return;
+    // setState(() {
+    //   _isExporting = true;
+    //   _result = null;
+    // });
+    // final result = await context.read<AppState>().exportService.generateExport(
+    //       courseId: _selectedCourse!.id,
+    //       format: _format,
+    //       startDate: _range?.start,
+    //       endDate: _range?.end,
+    //     );
+    // if (!mounted) return;
+    // setState(() {
+    //   _isExporting = false;
+    //   _result = result;
+    // });
   }
 
   @override

@@ -1,9 +1,9 @@
+import 'package:attendx/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/state/app_state.dart';
 import '../../../shared/models/student.dart';
 import '../../../shared/mock/mock_data.dart';
 
@@ -12,7 +12,7 @@ class StudentProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<AuthController>();
     final student = appState.currentUser is Student ? appState.currentUser as Student : MockData.demoStudent;
 
     return Scaffold(
@@ -25,7 +25,7 @@ class StudentProfileScreen extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 42,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundColor: AppColors.primary.withValues(alpha: .1),
                   child: Text(
                     student.fullName.trim().isNotEmpty ? student.fullName.trim()[0].toUpperCase() : '?',
                     style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: AppColors.primary),
@@ -97,7 +97,7 @@ class StudentProfileScreen extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.of(dialogContext).pop();
-              await context.read<AppState>().logout();
+              await context.read<AuthController>().logout();
               if (context.mounted) context.go('/login');
             },
             child: const Text('Log Out', style: TextStyle(color: AppColors.error)),

@@ -1,3 +1,5 @@
+import 'package:attendx/controllers/auth_controller.dart';
+import 'package:attendx/controllers/course_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
@@ -33,11 +35,14 @@ class _LecturerCoursesScreenState extends State<LecturerCoursesScreen> {
   Future<void> _load() async {
     setState(() => _state = _LoadState.loading);
     try {
-      final courses = await context.read<AppState>().courseService.getLecturerCourses();
+      final courseHandler = context.read<CourseController>();
+      await courseHandler.fetchLecturerCourses();
       if (!mounted) return;
       setState(() {
-        _courses = courses;
-        _state = courses.isEmpty ? _LoadState.empty : _LoadState.loaded;
+        _courses = courseHandler.lecturerCourses;
+        _state = courseHandler.lecturerCourses.isEmpty
+            ? _LoadState.empty
+            : _LoadState.loaded;
       });
     } catch (_) {
       if (!mounted) return;
@@ -47,7 +52,8 @@ class _LecturerCoursesScreenState extends State<LecturerCoursesScreen> {
 
   Future<void> _createCourse() async {
     final created = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const CreateCourseScreen(), fullscreenDialog: true),
+      MaterialPageRoute(
+          builder: (_) => const CreateCourseScreen(), fullscreenDialog: true),
     );
     if (created == true) _load();
   }
@@ -69,7 +75,10 @@ class _LecturerCoursesScreenState extends State<LecturerCoursesScreen> {
               return const LoadingState(message: 'Loading your courses…');
             case _LoadState.error:
               return ListView(children: [
-                ErrorState(title: 'Could not load courses', message: 'Please check your connection and try again.', onRetry: _load),
+                ErrorState(
+                    title: 'Could not load courses',
+                    message: 'Please check your connection and try again.',
+                    onRetry: _load),
               ]);
             case _LoadState.empty:
               return ListView(children: const [
@@ -81,9 +90,11 @@ class _LecturerCoursesScreenState extends State<LecturerCoursesScreen> {
               ]);
             case _LoadState.loaded:
               return ListView.separated(
-                padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 90),
+                padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.lg, AppSpacing.lg, AppSpacing.lg, 90),
                 itemCount: _courses.length,
-                separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(height: AppSpacing.sm),
                 itemBuilder: (context, i) {
                   final course = _courses[i];
                   return CourseCard(
@@ -92,12 +103,15 @@ class _LecturerCoursesScreenState extends State<LecturerCoursesScreen> {
                     onTap: () {},
                     onEdit: () async {
                       final updated = await Navigator.of(context).push<bool>(
-                        MaterialPageRoute(builder: (_) => EditCourseScreen(course: course)),
+                        MaterialPageRoute(
+                            builder: (_) => EditCourseScreen(course: course)),
                       );
                       if (updated == true) _load();
                     },
                     onManageStudents: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => AttendanceRecordsScreen(initialCourseId: course.id)),
+                      MaterialPageRoute(
+                          builder: (_) => AttendanceRecordsScreen(
+                              initialCourseId: course.id)),
                     ),
                   );
                 },

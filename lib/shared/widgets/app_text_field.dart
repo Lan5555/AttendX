@@ -15,6 +15,11 @@ class AppTextField extends StatefulWidget {
   final void Function(String)? onChanged;
   final bool enabled;
 
+  // New: focus + keyboard control
+  final FocusNode? focusNode;
+  final TextInputAction? textInputAction;
+  final void Function(String)? onSubmitted;
+
   const AppTextField({
     super.key,
     required this.label,
@@ -28,6 +33,9 @@ class AppTextField extends StatefulWidget {
     this.maxLines = 1,
     this.onChanged,
     this.enabled = true,
+    this.focusNode,
+    this.textInputAction,
+    this.onSubmitted,
   });
 
   @override
@@ -41,6 +49,9 @@ class _AppTextFieldState extends State<AppTextField> {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: widget.controller,
+      focusNode: widget.focusNode,
+      textInputAction: widget.textInputAction,
+      onFieldSubmitted: widget.onSubmitted,
       obscureText: widget.isPassword ? _obscured : widget.obscureText,
       keyboardType: widget.keyboardType,
       validator: widget.validator,
@@ -54,7 +65,9 @@ class _AppTextFieldState extends State<AppTextField> {
         suffixIcon: widget.isPassword
             ? IconButton(
                 icon: Icon(
-                  _obscured ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  _obscured
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
                   size: 20,
                 ),
                 onPressed: () => setState(() => _obscured = !_obscured),

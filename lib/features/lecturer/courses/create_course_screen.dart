@@ -1,13 +1,20 @@
+import 'package:attendx/controllers/course_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/state/app_state.dart';
 import '../../../shared/models/course.dart';
 import '../../../shared/models/course_schedule.dart';
 import '../../../shared/widgets/app_button.dart';
 import '../../../shared/widgets/app_text_field.dart';
 
-const _days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const _days = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday'
+];
 
 class CreateCourseScreen extends StatefulWidget {
   const CreateCourseScreen({super.key});
@@ -51,7 +58,8 @@ class _CreateCourseScreenState extends State<CreateCourseScreen> {
   }
 
   Future<void> _pickTime(bool isStart) async {
-    final picked = await showTimePicker(context: context, initialTime: isStart ? _startTime : _endTime);
+    final picked = await showTimePicker(
+        context: context, initialTime: isStart ? _startTime : _endTime);
     if (picked != null) {
       setState(() => isStart ? _startTime = picked : _endTime = picked);
     }
@@ -60,6 +68,8 @@ class _CreateCourseScreenState extends State<CreateCourseScreen> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
+    final courseHandler = context.read<CourseController>();
+
     final course = Course(
       id: 'c_${DateTime.now().millisecondsSinceEpoch}',
       code: _codeController.text.trim().toUpperCase(),
@@ -79,9 +89,10 @@ class _CreateCourseScreenState extends State<CreateCourseScreen> {
       enrolledStudents: 0,
       classesHeld: 0,
       classesAttended: 0,
-    );
-
-    await context.read<AppState>().courseService.createCourse(course);
+    ).toAdvancedJson();
+  
+    await courseHandler.createCourse(course, context);
+    //await context.read<AppState>().courseService.createCourse(course);
     if (!mounted) return;
     setState(() => _isLoading = false);
     Navigator.of(context).pop(true);
@@ -103,16 +114,23 @@ class _CreateCourseScreenState extends State<CreateCourseScreen> {
                   label: 'Course Code',
                   controller: _codeController,
                   hint: 'e.g. CSC 416',
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a course code' : null,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Enter a course code'
+                      : null,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 AppTextField(
                   label: 'Course Title',
                   controller: _titleController,
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a course title' : null,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Enter a course title'
+                      : null,
                 ),
                 const SizedBox(height: AppSpacing.md),
-                AppTextField(label: 'Description', controller: _descController, maxLines: 3),
+                AppTextField(
+                    label: 'Description',
+                    controller: _descController,
+                    maxLines: 3),
                 const SizedBox(height: AppSpacing.md),
                 Row(
                   children: [
@@ -121,7 +139,8 @@ class _CreateCourseScreenState extends State<CreateCourseScreen> {
                         label: 'Credit Units',
                         controller: _unitsController,
                         keyboardType: TextInputType.number,
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? 'Required' : null,
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),
@@ -130,7 +149,8 @@ class _CreateCourseScreenState extends State<CreateCourseScreen> {
                         label: 'Max Students',
                         controller: _maxStudentsController,
                         keyboardType: TextInputType.number,
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null,
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty) ? 'Required' : null,
                       ),
                     ),
                   ],
@@ -139,22 +159,28 @@ class _CreateCourseScreenState extends State<CreateCourseScreen> {
                 AppTextField(
                   label: 'Department',
                   controller: _departmentController,
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter department' : null,
+                  validator: (v) => (v == null || v.trim().isEmpty)
+                      ? 'Enter department'
+                      : null,
                 ),
                 const SizedBox(height: AppSpacing.md),
                 AppTextField(
                   label: 'Venue',
                   controller: _venueController,
                   hint: 'e.g. Lab 3',
-                  validator: (v) => (v == null || v.trim().isEmpty) ? 'Enter a venue' : null,
+                  validator: (v) =>
+                      (v == null || v.trim().isEmpty) ? 'Enter a venue' : null,
                 ),
                 const SizedBox(height: AppSpacing.lg),
-                Text('Schedule', style: Theme.of(context).textTheme.titleMedium),
+                Text('Schedule',
+                    style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: AppSpacing.sm),
                 DropdownButtonFormField<String>(
                   value: _day,
                   decoration: const InputDecoration(labelText: 'Day'),
-                  items: _days.map((d) => DropdownMenuItem(value: d, child: Text(d))).toList(),
+                  items: _days
+                      .map((d) => DropdownMenuItem(value: d, child: Text(d)))
+                      .toList(),
                   onChanged: (v) => setState(() => _day = v ?? _day),
                 ),
                 const SizedBox(height: AppSpacing.md),

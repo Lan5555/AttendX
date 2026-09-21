@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:attendx/services/attendance_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/state/app_state.dart';
 import '../../../shared/models/course.dart';
 import '../../../shared/models/attendance_verification.dart';
 import '../../../shared/widgets/qr_scanner_frame.dart';
@@ -15,9 +17,9 @@ import '../../../shared/widgets/status_badge.dart';
 enum _FlowStage { scan, verifying, success, error }
 
 /// The full mark-attendance journey: QR scan -> QR verify -> BLE proximity
-/// -> face/liveness verification -> success. Every biometric/crypto/BLE
-/// step here is mocked via [VerificationService]; only the UI states are
-/// real — the actual sensors/algorithms plug in behind the same interface.
+/// -> face/liveness verification -> success. The camera scan is real;
+/// BLE proximity and liveness are still mocked behind the same
+/// [AttendanceVerification] interface.
 class MarkAttendanceFlow extends StatefulWidget {
   final Course course;
   const MarkAttendanceFlow({super.key, required this.course});
@@ -35,46 +37,185 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
   String? _errorMessage;
   DateTime? _recordedAt;
   bool _synced = true;
+  final AttendanceService _service = AttendanceService();
+
+  final MobileScannerController _scannerController = MobileScannerController(
+    detectionSpeed: DetectionSpeed.noDuplicates,
+  );
+
+  late final String _clientRecordId;
+
+  @override
+  void initState() {
+    super.initState();
+    _clientRecordId = 'att_${DateTime.now().millisecondsSinceEpoch}';
+  }
 
   @override
   void dispose() {
     _sub?.cancel();
+    _scannerController.dispose();
     super.dispose();
   }
 
-  void _simulateScan() {
+  Future<bool> _isOnline() async {
+    final result = await Connectivity().checkConnectivity();
+    return !result.contains(ConnectivityResult.none);
+  }
+
+  void _onQrDetected(String scannedData) {
+    if (_stage != _FlowStage.scan) return;
     setState(() => _stage = _FlowStage.verifying);
-    final appState = context.read<AppState>();
-    _sub = appState.verificationService.runVerificationFlow().listen(
+
+    _sub = _processQrScan(scannedData).listen(
       (v) {
         setState(() => _verification = v);
-        if (v.attendanceStatus == VerificationStageStatus.success) {
-          _finish(appState);
+
+        if (v.allPassed) {
+          _finish();
+        } else if (v.hasFailed) {
+          setState(() {
+            _stage = _FlowStage.error;
+            _errorTitle = 'Verification Failed';
+            _errorMessage = 'One of the verification steps did not pass.';
+          });
         }
       },
       onError: (_) {
         setState(() {
           _stage = _FlowStage.error;
           _errorTitle = 'Verification Failed';
-          _errorMessage = 'Something went wrong during verification. Please try again.';
+          _errorMessage =
+              'Something went wrong during verification. Please try again.';
         });
       },
     );
   }
 
-  Future<void> _finish(AppState appState) async {
-    final isOnline = appState.isOnline;
-    await appState.attendanceService.recordAttendance(
-      courseId: widget.course.id,
-      courseCode: widget.course.code,
-      courseTitle: widget.course.title,
-      isOnline: isOnline,
+  /// Real QR parsing + mocked BLE/identity stages. Replace the TODO
+  /// sections with real service calls when they're ready.
+  Stream<AttendanceVerification> _processQrScan(String scannedData) async* {
+    // --- Stage 1: QR verification ---
+    var v = const AttendanceVerification(
+      qrStatus: VerificationStageStatus.inProgress,
     );
+    yield v;
+
+    Map<String, dynamic> qrPayload;
+    try {
+      qrPayload = jsonDecode(scannedData) as Map<String, dynamic>;
+    } catch (_) {
+      final uri = Uri.tryParse(scannedData);
+      if (uri == null) {
+        yield v.copyWith(qrStatus: VerificationStageStatus.failed);
+        return;
+      }
+      qrPayload = {
+        'sessionId': uri.queryParameters['sessionId'],
+        'token': uri.queryParameters['token'],
+      };
+    }
+
+    final sessionId = qrPayload['sessionId'] as String?;
+    final qrToken =
+        qrPayload['token'] as String? ?? qrPayload['qrToken'] as String?;
+
+    if (sessionId == null || qrToken == null) {
+      yield v.copyWith(qrStatus: VerificationStageStatus.failed);
+      return;
+    }
+
+    // TODO: validate the QR token with the backend.
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    v = v.copyWith(
+      qrStatus: VerificationStageStatus.success,
+      sessionId: sessionId,
+      qrToken: qrToken,
+    );
+    yield v;
+
+    // --- Stage 2: BLE proximity ---
+    v = v.copyWith(bleStatus: VerificationStageStatus.inProgress);
+    yield v;
+
+    // TODO: real BLE scan -> rssi; fail if below threshold.
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    v = v.copyWith(
+      bleStatus: VerificationStageStatus.success,
+      bleRssi: -58,
+    );
+    yield v;
+
+    // --- Stage 3: Identity / liveness ---
+    v = v.copyWith(identityStatus: VerificationStageStatus.inProgress);
+    yield v;
+
+    // TODO: real liveness verification.
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    v = v.copyWith(
+      identityStatus: VerificationStageStatus.success,
+      livenessConfirmed: true,
+    );
+    yield v;
+
+    // --- Stage 4: Record ---
+    v = v.copyWith(attendanceStatus: VerificationStageStatus.success);
+    yield v;
+  }
+
+  Future<void> _finish() async {
+    final isOnline = await _isOnline();
+
+    final payload = <String, dynamic>{
+      'sessionId': _verification.sessionId,
+      'qrToken': _verification.qrToken,
+      'bleRssi': _verification.bleRssi,
+      'livenessConfirmed': _verification.livenessConfirmed,
+      'clientRecordId': _clientRecordId,
+    };
+
+    bool synced = false;
+
+    if (isOnline) {
+      try {
+        final response = await _service.markAttendance(payload);
+
+        if (response.success) {
+          synced = true;
+        } else {
+          if (!mounted) return;
+          setState(() {
+            _stage = _FlowStage.error;
+            _errorTitle = 'Attendance not recorded';
+            _errorMessage = response.message;
+          });
+          return;
+        }
+      } catch (_) {
+        synced = false;
+      }
+    } else {
+      // TODO: persist `payload` to your offline queue.
+      synced = false;
+    }
+
     if (!mounted) return;
     setState(() {
       _stage = _FlowStage.success;
       _recordedAt = DateTime.now();
-      _synced = isOnline;
+      _synced = synced;
+    });
+  }
+
+  void _resetFlow() {
+    setState(() {
+      _stage = _FlowStage.scan;
+      _verification = const AttendanceVerification();
+      _errorTitle = null;
+      _errorMessage = null;
     });
   }
 
@@ -96,6 +237,9 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // SCAN STEP — live camera
+  // ─────────────────────────────────────────────────────────────────────
   Widget _buildScanStep() {
     return Column(
       key: const ValueKey('scan'),
@@ -110,43 +254,80 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
               ),
               const Spacer(),
               IconButton(
-                onPressed: () => setState(() => _flashOn = !_flashOn),
-                icon: Icon(_flashOn ? Icons.flash_on_rounded : Icons.flash_off_rounded, color: Colors.white),
+                onPressed: () {
+                  _scannerController.toggleTorch();
+                  setState(() => _flashOn = !_flashOn);
+                },
+                icon: Icon(
+                  _flashOn ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+                  color: Colors.white,
+                ),
               ),
             ],
           ),
         ),
-        const Spacer(),
-        const Text('Scan Attendance QR',
-            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w700)),
+        const SizedBox(height: AppSpacing.md),
+        const Text(
+          'Scan Attendance QR',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
           child: Text(
             'Scan the QR code displayed by your lecturer.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha:0.6),
+              fontSize: 13,
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.xl),
-        const QrScannerFrame(),
-        const Spacer(),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          child: AppButton(
-            label: 'Simulate QR Scan',
-            icon: Icons.qr_code_scanner_rounded,
-            onPressed: _simulateScan,
-            width: double.infinity,
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  child: MobileScanner(
+                    controller: _scannerController,
+                    onDetect: (capture) {
+                      final barcode = capture.barcodes.firstOrNull;
+                      final value = barcode?.rawValue;
+                      if (value != null) _onQrDetected(value);
+                    },
+                    errorBuilder: (context, error) {
+                      return Center(
+                        child: Text(
+                          'Camera error: ${error.errorCode}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const QrScannerFrame(),
+              ],
+            ),
           ),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: AppSpacing.md),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
           child: Text(
-            'Camera scanning will connect to the device camera once the backend verification service is live.',
+            'Position the QR code inside the frame.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withOpacity(0.35), fontSize: 11),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha:0.35),
+              fontSize: 11,
+            ),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
@@ -159,6 +340,9 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // VERIFYING STEP
+  // ─────────────────────────────────────────────────────────────────────
   Widget _buildVerifyingStep() {
     final (title, subtitle, icon) = _activeStageContent();
     return Column(
@@ -174,37 +358,58 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
           width: 120,
           height: 120,
           decoration: BoxDecoration(
-            color: AppColors.securityAccent.withOpacity(0.1),
+            color: AppColors.securityAccent.withValues(alpha:0.1),
             shape: BoxShape.circle,
           ),
           child: Center(
             child: Container(
               width: 84,
               height: 84,
-              decoration: BoxDecoration(color: AppColors.securityAccent.withOpacity(0.16), shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: AppColors.securityAccent.withValues(alpha:0.16),
+                shape: BoxShape.circle,
+              ),
               child: Icon(icon, color: AppColors.securityAccent, size: 36),
             ),
           ),
         ),
         const SizedBox(height: AppSpacing.lg),
-        Text(title, style: const TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w700)),
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 19,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-          child: Text(subtitle, textAlign: TextAlign.center, style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13)),
+          child: Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha:0.6),
+              fontSize: 13,
+            ),
+          ),
         ),
         const SizedBox(height: AppSpacing.md),
         const SizedBox(
           width: 22,
           height: 22,
-          child: CircularProgressIndicator(strokeWidth: 2.4, valueColor: AlwaysStoppedAnimation(AppColors.securityAccent)),
+          child: CircularProgressIndicator(
+            strokeWidth: 2.4,
+            valueColor: AlwaysStoppedAnimation(AppColors.securityAccent),
+          ),
         ),
         const Spacer(),
         Padding(
           padding: const EdgeInsets.only(bottom: AppSpacing.lg),
           child: TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white70)),
           ),
         ),
       ],
@@ -213,17 +418,36 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
 
   (String, String, IconData) _activeStageContent() {
     if (_verification.qrStatus != VerificationStageStatus.success) {
-      return ('Verifying attendance...', 'Confirming the QR code signature with the session.', Icons.qr_code_rounded);
+      return (
+        'Verifying attendance...',
+        'Confirming the QR code signature with the session.',
+        Icons.qr_code_rounded,
+      );
     }
     if (_verification.bleStatus != VerificationStageStatus.success) {
-      return ('Checking proximity', 'Make sure you are close to your lecturer.', Icons.bluetooth_searching_rounded);
+      return (
+        'Checking proximity',
+        'Make sure you are close to your lecturer.',
+        Icons.bluetooth_searching_rounded,
+      );
     }
     if (_verification.identityStatus != VerificationStageStatus.success) {
-      return ('Verify your identity', 'Position your face inside the frame.', Icons.face_retouching_natural_rounded);
+      return (
+        'Verify your identity',
+        'Position your face inside the frame.',
+        Icons.face_retouching_natural_rounded,
+      );
     }
-    return ('Recording attendance', 'Signing and saving your attendance record.', Icons.fact_check_rounded);
+    return (
+      'Recording attendance',
+      'Signing and saving your attendance record.',
+      Icons.fact_check_rounded,
+    );
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // SUCCESS STEP
+  // ─────────────────────────────────────────────────────────────────────
   Widget _buildSuccessStep() {
     final now = _recordedAt ?? DateTime.now();
     return Padding(
@@ -235,17 +459,30 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
           Container(
             width: 96,
             height: 96,
-            decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
-            child: const Icon(Icons.check_rounded, color: Colors.white, size: 52),
+            decoration: const BoxDecoration(
+              color: AppColors.success,
+              shape: BoxShape.circle,
+            ),
+            child:
+                const Icon(Icons.check_rounded, color: Colors.white, size: 52),
           ),
           const SizedBox(height: AppSpacing.lg),
-          const Text('Attendance Recorded',
-              style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.w800)),
+          const Text(
+            'Attendance Recorded',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             'Your attendance has been successfully recorded.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha:0.6),
+              fontSize: 13,
+            ),
           ),
           const SizedBox(height: AppSpacing.xl),
           Container(
@@ -260,11 +497,21 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
               children: [
                 _SuccessRow(label: 'Course', value: widget.course.code),
                 const Divider(color: Colors.white12, height: 22),
-                _SuccessRow(label: 'Time', value: DateFormat('h:mm a').format(now)),
+                _SuccessRow(
+                  label: 'Time',
+                  value: DateFormat('h:mm a').format(now),
+                ),
                 const Divider(color: Colors.white12, height: 22),
-                _SuccessRow(label: 'Date', value: DateFormat('d MMMM yyyy').format(now)),
+                _SuccessRow(
+                  label: 'Date',
+                  value: DateFormat('d MMMM yyyy').format(now),
+                ),
                 const Divider(color: Colors.white12, height: 22),
-                _SuccessRow(label: 'Attendance', value: '${widget.course.attendancePercentage.toStringAsFixed(0)}%'),
+                _SuccessRow(
+                  label: 'Attendance',
+                  value:
+                      '${widget.course.attendancePercentage.toStringAsFixed(0)}%',
+                ),
               ],
             ),
           ),
@@ -272,14 +519,18 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
           StatusBadge(
             label: _synced ? 'Synced' : 'Saved offline',
             tone: _synced ? StatusTone.success : StatusTone.warning,
-            icon: _synced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+            icon:
+                _synced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
           ),
           if (!_synced) ...[
             const SizedBox(height: 8),
             Text(
               'Attendance saved securely. It will sync automatically when you are back online.',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 11.5),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha:0.5),
+                fontSize: 11.5,
+              ),
             ),
           ],
           const Spacer(),
@@ -294,6 +545,9 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // ERROR STEP
+  // ─────────────────────────────────────────────────────────────────────
   Widget _buildErrorStep() {
     return Padding(
       key: const ValueKey('error'),
@@ -304,32 +558,43 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
           Container(
             width: 88,
             height: 88,
-            decoration: const BoxDecoration(color: AppColors.error, shape: BoxShape.circle),
-            child: const Icon(Icons.close_rounded, color: Colors.white, size: 44),
+            decoration: const BoxDecoration(
+              color: AppColors.error,
+              shape: BoxShape.circle,
+            ),
+            child:
+                const Icon(Icons.close_rounded, color: Colors.white, size: 44),
           ),
           const SizedBox(height: AppSpacing.lg),
-          Text(_errorTitle ?? 'Something went wrong',
-              style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.w800)),
+          Text(
+            _errorTitle ?? 'Something went wrong',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
           const SizedBox(height: 8),
           Text(
             _errorMessage ?? 'Please try again.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha:0.6),
+              fontSize: 13,
+            ),
           ),
           const Spacer(),
           AppButton(
             label: 'Try Again',
             icon: Icons.refresh_rounded,
             width: double.infinity,
-            onPressed: () => setState(() {
-              _stage = _FlowStage.scan;
-              _verification = const AttendanceVerification();
-            }),
+            onPressed: _resetFlow,
           ),
           const SizedBox(height: 10),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel', style: TextStyle(color: Colors.white70)),
+            child:
+                const Text('Cancel', style: TextStyle(color: Colors.white70)),
           ),
         ],
       ),
@@ -347,8 +612,21 @@ class _SuccessRow extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label, style: TextStyle(color: Colors.white.withOpacity(0.55), fontSize: 13)),
-        Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w700)),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha:0.55),
+            fontSize: 13,
+          ),
+        ),
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ],
     );
   }

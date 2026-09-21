@@ -13,5 +13,25 @@ class CourseSchedule {
     required this.venue,
   });
 
+  factory CourseSchedule.fromJson(Map<String, dynamic> json) {
+    return CourseSchedule(
+      day: json['day'] as String,
+      startTime: json['startTime'] as String,
+      endTime: json['endTime'] as String,
+      recurringWeekly: json['recurringWeekly'] as bool? ?? true,
+      venue: json['venue'] as String,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'day': day,
+      'startTime': startTime,
+      'endTime': endTime,
+      'recurringWeekly': recurringWeekly,
+      'venue': venue,
+    };
+  }
+
   String get timeRangeLabel => '$startTime – $endTime';
 }

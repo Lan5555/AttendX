@@ -36,26 +36,26 @@ class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
   }
 
   Future<void> _start() async {
-    final appState = context.read<AppState>();
-    final started = await appState.sessionService.startSession(widget.session.courseId);
-    if (!mounted) return;
-    setState(() {
-      _session = started;
-      _isStarting = false;
-    });
-    _sub = appState.sessionService.watchSession(started.id).listen((s) {
-      if (!mounted) return;
-      setState(() {
-        _session = s;
-        _secondsToRefresh = 8;
-      });
-    });
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!mounted) return;
-      setState(() {
-        _secondsToRefresh = _secondsToRefresh > 0 ? _secondsToRefresh - 1 : 8;
-      });
-    });
+    // final appState = context.read<AppState>();
+    // final started = await appState.sessionService.startSession(widget.session.courseId);
+    // if (!mounted) return;
+    // setState(() {
+    //   _session = started;
+    //   _isStarting = false;
+    // });
+    // _sub = appState.sessionService.watchSession(started.id).listen((s) {
+    //   if (!mounted) return;
+    //   setState(() {
+    //     _session = s;
+    //     _secondsToRefresh = 8;
+    //   });
+    // });
+    // _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+    //   if (!mounted) return;
+    //   setState(() {
+    //     _secondsToRefresh = _secondsToRefresh > 0 ? _secondsToRefresh - 1 : 8;
+    //   });
+    // });
   }
 
   @override
@@ -66,16 +66,16 @@ class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
   }
 
   Future<void> _togglePause() async {
-    final s = _session;
-    if (s == null) return;
-    final appState = context.read<AppState>();
-    if (s.status == SessionStatus.active) {
-      final updated = await appState.sessionService.pauseSession(s.id);
-      setState(() => _session = updated);
-    } else {
-      // Resume by re-marking active locally (mock service keeps ticking only while active).
-      setState(() => _session = s.copyWith(status: SessionStatus.active));
-    }
+    // final s = _session;
+    // if (s == null) return;
+    // final appState = context.read<AppState>();
+    // if (s.status == SessionStatus.active) {
+    //   final updated = await appState.sessionService.pauseSession(s.id);
+    //   setState(() => _session = updated);
+    // } else {
+    //   // Resume by re-marking active locally (mock service keeps ticking only while active).
+    //   setState(() => _session = s.copyWith(status: SessionStatus.active));
+    // }
   }
 
   Future<void> _confirmEnd() async {
@@ -95,12 +95,12 @@ class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
     );
     if (confirmed != true || _session == null) return;
 
-    final appState = context.read<AppState>();
-    final ended = await appState.sessionService.endSession(_session!.id);
-    if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => SessionSummaryScreen(session: ended)),
-    );
+    // final appState = context.read<AppState>();
+    // final ended = await appState.sessionService.endSession(_session!.id);
+    // if (!mounted) return;
+    // Navigator.of(context).pushReplacement(
+    //   MaterialPageRoute(builder: (_) => SessionSummaryScreen(session: ended)),
+    // );
   }
 
   @override

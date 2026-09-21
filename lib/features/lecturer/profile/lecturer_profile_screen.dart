@@ -1,3 +1,4 @@
+import 'package:attendx/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -12,7 +13,7 @@ class LecturerProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<AuthController>();
     final lecturer = appState.currentUser is Lecturer ? appState.currentUser as Lecturer : MockData.demoLecturer;
 
     return Scaffold(
@@ -92,7 +93,7 @@ class LecturerProfileScreen extends StatelessWidget {
           TextButton(
             onPressed: () async {
               Navigator.of(dialogContext).pop();
-              await context.read<AppState>().logout();
+              await context.read<AuthController>().logout();
               if (context.mounted) context.go('/login');
             },
             child: const Text('Log Out', style: TextStyle(color: AppColors.error)),

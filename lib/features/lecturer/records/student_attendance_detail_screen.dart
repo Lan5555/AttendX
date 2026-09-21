@@ -39,7 +39,7 @@ class StudentAttendanceDetailScreen extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 36,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundColor: AppColors.primary.withValues(alpha:0.1),
                   child: Text(studentName[0], style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: AppColors.primary)),
                 ),
                 const SizedBox(height: AppSpacing.sm),

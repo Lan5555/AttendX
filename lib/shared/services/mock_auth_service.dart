@@ -49,7 +49,7 @@ class MockAuthService implements AuthService {
       faculty: faculty,
       studentId: studentId,
       semester: 'Rain Semester, 2025/2026',
-      overallAttendancePercentage: 0,
+      overallAttendancePercentage: 0, accessToken: '',
     );
     _currentUser = user;
     return AuthResult.success(user);
@@ -71,7 +71,7 @@ class MockAuthService implements AuthService {
       email: email,
       department: department,
       faculty: faculty,
-      staffId: staffId,
+      staffId: staffId, accessToken: '',
     );
     _currentUser = user;
     return AuthResult.success(user);

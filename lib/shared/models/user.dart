@@ -10,6 +10,7 @@ class AppUser {
   final String department;
   final String faculty;
   final String? avatarUrl;
+  final String accessToken;
 
   const AppUser({
     required this.id,
@@ -19,5 +20,6 @@ class AppUser {
     required this.department,
     required this.faculty,
     this.avatarUrl,
+    required this.accessToken,
   });
 }

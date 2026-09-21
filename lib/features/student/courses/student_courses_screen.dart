@@ -1,3 +1,5 @@
+import 'package:attendx/controllers/course_controller.dart';
+import 'package:attendx/features/student/enroll/enroll__course.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
@@ -30,17 +32,16 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
 
   Future<void> _load() async {
     setState(() => _state = _LoadState.loading);
-    try {
-      final courses = await context.read<AppState>().courseService.getStudentCourses();
-      if (!mounted) return;
-      setState(() {
-        _courses = courses;
-        _state = courses.isEmpty ? _LoadState.empty : _LoadState.loaded;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _state = _LoadState.error);
-    }
+    final courseHandler = context.read<CourseController>();
+    await courseHandler.fetchStudentCourses();
+    if (!mounted) return;
+    setState(() {
+      _courses = courseHandler.courses;
+      _state =
+          courseHandler.courses.isEmpty ? _LoadState.empty : _LoadState.loaded;
+    });
+    // if (!mounted) return;
+    // setState(() => _state = _LoadState.error);
   }
 
   @override
@@ -57,7 +58,8 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
               return ListView(children: [
                 ErrorState(
                   title: 'Could not load courses',
-                  message: 'Something went wrong while fetching your enrolled courses.',
+                  message:
+                      'Something went wrong while fetching your enrolled courses.',
                   onRetry: _load,
                 ),
               ]);
@@ -66,26 +68,37 @@ class _StudentCoursesScreenState extends State<StudentCoursesScreen> {
                 EmptyState(
                   icon: Icons.menu_book_outlined,
                   title: 'No courses yet',
-                  message: 'Courses you are enrolled in will appear here once registration is complete.',
+                  message:
+                      'Courses you are enrolled in will appear here once registration is complete.',
                 ),
               ]);
             case _LoadState.loaded:
               return ListView.separated(
                 padding: const EdgeInsets.all(AppSpacing.lg),
                 itemCount: _courses.length,
-                separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(height: AppSpacing.sm),
                 itemBuilder: (context, i) {
                   final course = _courses[i];
                   return CourseCard(
                     course: course,
                     onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(builder: (_) => CourseDetailsScreen(courseId: course.id)),
+                      MaterialPageRoute(
+                          builder: (_) =>
+                              CourseDetailsScreen(courseId: course.id)),
                     ),
                   );
                 },
               );
           }
         }),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.of(context).push(MaterialPageRoute(
+              builder: (context) => const EnrollCoursesScreen()));
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }

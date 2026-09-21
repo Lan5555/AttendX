@@ -1,3 +1,5 @@
+import 'package:attendx/controllers/attendance_controller.dart';
+import 'package:attendx/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -25,8 +27,9 @@ class _MonthGroup {
     required this.records,
   });
 
-  int get verifiedCount =>
-      records.where((r) => r.verification == RecordVerification.verified).length;
+  int get verifiedCount => records
+      .where((r) => r.verification == RecordVerification.verified)
+      .length;
   int get failedCount => records.length - verifiedCount;
 }
 
@@ -75,11 +78,11 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
   }
 
   Future<void> _load() async {
-    final records =
-        await context.read<AppState>().attendanceService.getStudentHistory();
+    final attendanceHandler = context.read<AttendanceController>();
+    await attendanceHandler.fetchStudentAttendanceHistory();
     if (!mounted) return;
     setState(() {
-      _records = records;
+      _records = attendanceHandler.attendanceHistory;
       _isLoading = false;
     });
     _fadeController.forward();
@@ -158,7 +161,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<AuthController>();
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -220,8 +223,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
                               SliverToBoxAdapter(
                                 child: _FilterChips(
                                   selected: _filter,
-                                  onChanged: (f) =>
-                                      setState(() => _filter = f),
+                                  onChanged: (f) => setState(() => _filter = f),
                                   counts: {
                                     AttendanceFilter.all: _totalCount,
                                     AttendanceFilter.verified: _verifiedCount,
@@ -378,7 +380,8 @@ class _SummaryCard extends StatelessWidget {
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(AppRadius.xl),
-          border: Border.all(color: rateColor.withValues(alpha: .2), width: 1.2),
+          border:
+              Border.all(color: rateColor.withValues(alpha: .2), width: 1.2),
           boxShadow: [
             BoxShadow(
               color: rateColor.withValues(alpha: .06),
@@ -647,9 +650,7 @@ class _FilterChips extends StatelessWidget {
             Text(
               label,
               style: TextStyle(
-                color: isSelected
-                    ? AppColors.primary
-                    : AppColors.textSecondary,
+                color: isSelected ? AppColors.primary : AppColors.textSecondary,
                 fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
                 fontSize: 13,
               ),

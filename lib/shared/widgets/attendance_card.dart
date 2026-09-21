@@ -55,12 +55,12 @@ class _AttendanceRecordCardState extends State<AttendanceRecordCard> {
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(AppRadius.lg),
           border: Border.all(
-            color: fgColor.withOpacity(0.15),
+            color: fgColor.withValues(alpha: .15),
             width: 1,
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.03),
+              color: Colors.black.withValues(alpha: .03),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -195,7 +195,7 @@ class _StatusIcon extends StatelessWidget {
         color: backgroundColor,
         borderRadius: BorderRadius.circular(size / 3.5),
         border: Border.all(
-          color: foregroundColor.withOpacity(0.2),
+          color: foregroundColor.withValues(alpha: .2),
           width: 1,
         ),
       ),
@@ -456,9 +456,9 @@ class _CompactStatusDot extends StatelessWidget {
       width: 22,
       height: 22,
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: .12),
         shape: BoxShape.circle,
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: .3)),
       ),
       child: Icon(
         verified ? Icons.check_rounded : Icons.close_rounded,
@@ -505,7 +505,7 @@ class _SyncingBadgeState extends State<_SyncingBadge>
       decoration: BoxDecoration(
         color: AppColors.surfaceAlt,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.outline.withOpacity(0.5)),
+        border: Border.all(color: AppColors.outline.withValues(alpha: .5)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

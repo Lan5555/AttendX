@@ -1,3 +1,5 @@
+import 'package:attendx/controllers/auth_controller.dart';
+import 'package:attendx/controllers/course_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
@@ -58,11 +60,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   }
 
   Future<void> _load() async {
-    final appState = context.read<AppState>();
-    final courses = await appState.courseService.getStudentCourses();
+    final appState = context.read<CourseController>();
+    final auth = context.read<AuthController>();
+    await appState.fetchStudentCourses();
     if (!mounted) return;
     setState(() {
-      _courses = courses;
+      _courses = appState.courses;
       _isLoading = false;
     });
     _fadeController.forward();
@@ -98,7 +101,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AppState>();
+    final appState = context.watch<AuthController>();
     final student = appState.currentUser is Student
         ? appState.currentUser as Student
         : MockData.demoStudent;
@@ -281,7 +284,9 @@ class _GreetingHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 30,),
+              const SizedBox(
+                height: 30,
+              ),
               Row(
                 children: [
                   Text(
@@ -404,8 +409,8 @@ class _OverallAttendanceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isGood =
-        student.overallAttendancePercentage >= AppConstants.defaultAttendanceThreshold;
+    final isGood = student.overallAttendancePercentage >=
+        AppConstants.defaultAttendanceThreshold;
     final statusColor = isGood ? AppColors.success : AppColors.warning;
 
     return Container(
@@ -464,10 +469,10 @@ class _OverallAttendanceCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Text(
                       'Overall Attendance',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13
-                          ),
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600, fontSize: 13),
                     ),
                   ],
                 ),
@@ -486,9 +491,8 @@ class _OverallAttendanceCard extends StatelessWidget {
                   label: belowCount == 0
                       ? 'All courses on track'
                       : '$belowCount course(s) below threshold',
-                  tone: belowCount == 0
-                      ? StatusTone.success
-                      : StatusTone.warning,
+                  tone:
+                      belowCount == 0 ? StatusTone.success : StatusTone.warning,
                   icon: belowCount == 0
                       ? Icons.check_circle_rounded
                       : Icons.warning_amber_rounded,
@@ -699,17 +703,33 @@ class _TodayClassCardState extends State<_TodayClassCard> {
   (String, StatusTone, IconData, Color) get _statusInfo {
     switch (widget.data.state) {
       case ClassSessionState.upcoming:
-        return ('Upcoming', StatusTone.info, Icons.schedule_rounded,
-            AppColors.info);
+        return (
+          'Upcoming',
+          StatusTone.info,
+          Icons.schedule_rounded,
+          AppColors.info
+        );
       case ClassSessionState.attendanceOpen:
-        return ('Attendance Open', StatusTone.success,
-            Icons.qr_code_scanner_rounded, AppColors.success);
+        return (
+          'Attendance Open',
+          StatusTone.success,
+          Icons.qr_code_scanner_rounded,
+          AppColors.success
+        );
       case ClassSessionState.completed:
-        return ('Completed', StatusTone.neutral,
-            Icons.check_circle_outline_rounded, AppColors.textTertiary);
+        return (
+          'Completed',
+          StatusTone.neutral,
+          Icons.check_circle_outline_rounded,
+          AppColors.textTertiary
+        );
       case ClassSessionState.missed:
-        return ('Missed', StatusTone.error, Icons.cancel_outlined,
-            AppColors.error);
+        return (
+          'Missed',
+          StatusTone.error,
+          Icons.cancel_outlined,
+          AppColors.error
+        );
     }
   }
 
