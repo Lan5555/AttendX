@@ -146,7 +146,7 @@ class AppTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.surface,
-        indicatorColor: AppColors.primary.withOpacity(0.12),
+        indicatorColor: AppColors.primary.withValues(alpha: .12),
         elevation: 0,
         height: 66,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {

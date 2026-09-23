@@ -1,7 +1,7 @@
 class CourseSchedule {
-  final String day; // e.g. "Monday"
-  final String startTime; // e.g. "10:00 AM"
-  final String endTime; // e.g. "12:00 PM"
+  final String day;
+  final String startTime;
+  final String endTime;
   final bool recurringWeekly;
   final String venue;
 
@@ -15,23 +15,46 @@ class CourseSchedule {
 
   factory CourseSchedule.fromJson(Map<String, dynamic> json) {
     return CourseSchedule(
-      day: json['day'] as String,
-      startTime: json['startTime'] as String,
-      endTime: json['endTime'] as String,
+      day: json['day']?.toString() ?? '',
+      startTime: json['startTime']?.toString() ?? '',
+      endTime: json['endTime']?.toString() ?? '',
       recurringWeekly: json['recurringWeekly'] as bool? ?? true,
-      venue: json['venue'] as String,
+      venue: json['venue']?.toString() ?? 'TBA',
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'day': day,
-      'startTime': startTime,
-      'endTime': endTime,
-      'recurringWeekly': recurringWeekly,
-      'venue': venue,
-    };
+  Map<String, dynamic> toJson() => {
+        'day': day,
+        'startTime': startTime,
+        'endTime': endTime,
+        'recurringWeekly': recurringWeekly,
+        'venue': venue,
+      };
+
+  /// Human-readable time range for UI display.
+  /// Handles partial data gracefully so the chip never renders empty.
+  String get timeRangeLabel {
+    final s = startTime.trim();
+    final e = endTime.trim();
+    if (s.isEmpty && e.isEmpty) return 'Time TBA';
+    if (s.isEmpty) return e;
+    if (e.isEmpty) return s;
+    return '$s – $e';
   }
 
-  String get timeRangeLabel => '$startTime – $endTime';
+  CourseSchedule copyWith({
+    String? day,
+    String? startTime,
+    String? endTime,
+    bool? recurringWeekly,
+    String? venue,
+  }) {
+    return CourseSchedule(
+      day: day ?? this.day,
+      startTime: startTime ?? this.startTime,
+      endTime: endTime ?? this.endTime,
+      recurringWeekly: recurringWeekly ?? this.recurringWeekly,
+      venue: venue ?? this.venue,
+    );
+  }
 }

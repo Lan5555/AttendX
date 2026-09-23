@@ -24,6 +24,8 @@ dependencies:
   local_auth: ^3.0.2
   connectivity_plus: ^7.3.1
   mobile_scanner: ^7.4.2
+  uuid: ^4.6.0
+  flutter_launcher_icons: ^0.14.4
 
 dev_dependencies:
   flutter_test:
@@ -35,3 +37,9 @@ flutter:
   
   assets:
   - .env
+  - assets/
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/app-logo.jpeg"
+  min_sdk_android: 21

@@ -68,7 +68,7 @@ class _StepDot extends StatelessWidget {
         );
         break;
       case VerificationStageStatus.pending:
-        bg = Colors.white.withOpacity(0.08);
+        bg = Colors.white.withValues(alpha: .08);
         fg = Colors.white54;
         child = Icon(icon, size: 15, color: fg);
         break;
@@ -84,7 +84,7 @@ class _StepDot extends StatelessWidget {
           child: child,
         ),
         const SizedBox(height: 6),
-        Text(label, style: TextStyle(fontSize: 10.5, color: Colors.white.withOpacity(0.8), fontWeight: FontWeight.w600)),
+        Text(label, style: TextStyle(fontSize: 10.5, color: Colors.white.withValues(alpha:0.8), fontWeight: FontWeight.w600)),
       ],
     );
   }

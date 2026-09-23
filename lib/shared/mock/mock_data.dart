@@ -32,7 +32,7 @@ class MockData {
   );
 
   static final List<Course> studentCourses = [
-    Course(
+    const Course(
       id: 'c1',
       code: 'CSC 416',
       title: 'Software Engineering',
@@ -41,7 +41,7 @@ class MockData {
       lecturerName: 'Dr. Samuel Johnson',
       creditUnits: 3,
       department: 'Computer Science',
-      schedule: const CourseSchedule(
+      schedule: CourseSchedule(
         day: 'Monday',
         startTime: '10:00 AM',
         endTime: '12:00 PM',
@@ -51,7 +51,7 @@ class MockData {
       classesHeld: 20,
       classesAttended: 18,
     ),
-    Course(
+    const Course(
       id: 'c2',
       code: 'CSC 408',
       title: 'Artificial Intelligence',
@@ -59,7 +59,7 @@ class MockData {
       lecturerName: 'Prof. Amaka Eze',
       creditUnits: 3,
       department: 'Computer Science',
-      schedule: const CourseSchedule(
+      schedule: CourseSchedule(
         day: 'Tuesday',
         startTime: '8:00 AM',
         endTime: '10:00 AM',
@@ -69,7 +69,7 @@ class MockData {
       classesHeld: 18,
       classesAttended: 11,
     ),
-    Course(
+    const Course(
       id: 'c3',
       code: 'CSC 412',
       title: 'Distributed Systems',
@@ -77,7 +77,7 @@ class MockData {
       lecturerName: 'Dr. Ibrahim Musa',
       creditUnits: 2,
       department: 'Computer Science',
-      schedule: const CourseSchedule(
+      schedule: CourseSchedule(
         day: 'Wednesday',
         startTime: '2:00 PM',
         endTime: '4:00 PM',
@@ -87,7 +87,7 @@ class MockData {
       classesHeld: 16,
       classesAttended: 8,
     ),
-    Course(
+    const Course(
       id: 'c4',
       code: 'GST 312',
       title: 'Peace and Conflict Resolution',
@@ -95,7 +95,7 @@ class MockData {
       lecturerName: 'Dr. Grace Bello',
       creditUnits: 2,
       department: 'General Studies',
-      schedule: const CourseSchedule(
+      schedule: CourseSchedule(
         day: 'Thursday',
         startTime: '12:00 PM',
         endTime: '1:00 PM',
@@ -108,7 +108,7 @@ class MockData {
   ];
 
   static final List<Course> lecturerCourses = [
-    Course(
+    const Course(
       id: 'c1',
       code: 'CSC 416',
       title: 'Software Engineering',
@@ -117,7 +117,7 @@ class MockData {
       lecturerName: 'Dr. Samuel Johnson',
       creditUnits: 3,
       department: 'Computer Science',
-      schedule: const CourseSchedule(
+      schedule: CourseSchedule(
         day: 'Monday',
         startTime: '10:00 AM',
         endTime: '12:00 PM',
@@ -127,7 +127,7 @@ class MockData {
       classesHeld: 20,
       classesAttended: 16, // avg class attendance for stats display
     ),
-    Course(
+    const Course(
       id: 'c5',
       code: 'CSC 301',
       title: 'Data Structures & Algorithms',
@@ -135,7 +135,7 @@ class MockData {
       lecturerName: 'Dr. Samuel Johnson',
       creditUnits: 3,
       department: 'Computer Science',
-      schedule: const CourseSchedule(
+      schedule: CourseSchedule(
         day: 'Wednesday',
         startTime: '9:00 AM',
         endTime: '11:00 AM',
@@ -145,7 +145,7 @@ class MockData {
       classesHeld: 20,
       classesAttended: 19,
     ),
-    Course(
+    const Course(
       id: 'c6',
       code: 'CSC 350',
       title: 'Operating Systems',
@@ -153,7 +153,7 @@ class MockData {
       lecturerName: 'Dr. Samuel Johnson',
       creditUnits: 3,
       department: 'Computer Science',
-      schedule: const CourseSchedule(
+      schedule: CourseSchedule(
         day: 'Friday',
         startTime: '1:00 PM',
         endTime: '3:00 PM',

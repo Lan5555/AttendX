@@ -26,7 +26,7 @@ class LecturerProfileScreen extends StatelessWidget {
               children: [
                 CircleAvatar(
                   radius: 42,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundColor: AppColors.primary.withValues(alpha: .1),
                   child: Text(
                     lecturer.fullName.trim().isNotEmpty ? lecturer.fullName.trim()[0].toUpperCase() : '?',
                     style: const TextStyle(fontSize: 30, fontWeight: FontWeight.w800, color: AppColors.primary),

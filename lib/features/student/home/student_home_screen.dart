@@ -1,11 +1,11 @@
 import 'package:attendx/controllers/auth_controller.dart';
 import 'package:attendx/controllers/course_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../../core/state/app_state.dart';
 import '../../../shared/models/student.dart';
 import '../../../shared/models/course.dart';
 import '../../../shared/mock/mock_data.dart';
@@ -50,7 +50,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
       parent: _fadeController,
       curve: Curves.easeOutCubic,
     );
-    _load();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
@@ -60,8 +60,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     final appState = context.read<CourseController>();
-    final auth = context.read<AuthController>();
     await appState.fetchStudentCourses();
     if (!mounted) return;
     setState(() {
@@ -85,18 +85,57 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
     return '🌙';
   }
 
+  // ── Today's classes ─────────────────────────────────────────────────
+  /// Only courses scheduled for today's weekday, with a best-effort
+  /// session state derived from the schedule and current time.
   List<_TodayClass> get _todayClasses {
-    if (_courses.isEmpty) return [];
-    final states = [
-      ClassSessionState.attendanceOpen,
-      ClassSessionState.upcoming,
-      ClassSessionState.completed,
-      ClassSessionState.missed,
-    ];
-    return List.generate(
-      _courses.length.clamp(0, 4),
-      (i) => _TodayClass(_courses[i], states[i % states.length]),
+    final weekday = DateFormat('EEEE').format(DateTime.now());
+    return _courses
+        .where((c) => c.schedule.day.toLowerCase() == weekday.toLowerCase())
+        .map((c) => _TodayClass(c, _inferState(c)))
+        .toList();
+  }
+
+  ClassSessionState _inferState(Course course) {
+    final now = DateTime.now();
+    final start = _parseTime(course.schedule.startTime);
+    final end = _parseTime(course.schedule.endTime);
+    if (start == null || end == null) return ClassSessionState.upcoming;
+
+    final classStart = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      start.hour,
+      start.minute,
     );
+    final classEnd = DateTime(
+      now.year,
+      now.month,
+      now.day,
+      end.hour,
+      end.minute,
+    );
+
+    if (now.isBefore(classStart)) return ClassSessionState.upcoming;
+    if (now.isAfter(classEnd)) return ClassSessionState.completed;
+    return ClassSessionState.attendanceOpen;
+  }
+
+  TimeOfDay? _parseTime(String s) {
+    if (s.trim().isEmpty) return null;
+    try {
+      final dt = DateFormat('h:mm a').parseStrict(s.trim());
+      return TimeOfDay(hour: dt.hour, minute: dt.minute);
+    } catch (_) {
+      // Try "HH:mm" as a fallback.
+      try {
+        final dt = DateFormat('HH:mm').parseStrict(s.trim());
+        return TimeOfDay(hour: dt.hour, minute: dt.minute);
+      } catch (_) {
+        return null;
+      }
+    }
   }
 
   @override
@@ -106,9 +145,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
         ? appState.currentUser as Student
         : MockData.demoStudent;
 
+    // Only count courses that have actually held sessions — otherwise a
+    // fresh course (0/0) with no attendance yet would be flagged.
     final below = _courses
+        .where((c) => c.classesHeld > 0)
         .where((c) => c.eligibility != AttendanceEligibility.eligible)
         .length;
+
     final attended = _courses.fold<int>(0, (sum, c) => sum + c.classesAttended);
     final missed = _courses.fold<int>(0, (sum, c) => sum + c.classesMissed);
 
@@ -123,9 +166,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                 : RefreshIndicator(
                     onRefresh: _load,
                     color: AppColors.primary,
+                    backgroundColor: AppColors.surface,
                     child: FadeTransition(
                       opacity: _fadeAnimation,
                       child: ListView(
+                        physics: const BouncingScrollPhysics(
+                          parent: AlwaysScrollableScrollPhysics(),
+                        ),
                         padding: const EdgeInsets.fromLTRB(
                           AppSpacing.lg,
                           AppSpacing.md,
@@ -133,7 +180,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                           AppSpacing.lg,
                         ),
                         children: [
-                          // ─── Greeting Header ───────────────────────
                           _GreetingHeader(
                             greeting: _greeting(),
                             emoji: _greetingEmoji(),
@@ -142,18 +188,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                             semester: student.semester,
                             isOnline: appState.isOnline,
                           ),
-
                           const SizedBox(height: AppSpacing.lg),
-
-                          // ─── Overall Attendance Card ───────────────
                           _OverallAttendanceCard(
                             student: student,
                             belowCount: below,
                           ),
-
                           const SizedBox(height: AppSpacing.lg),
-
-                          // ─── Today's Classes ───────────────────────
                           _SectionHeader(
                             title: "Today's Classes",
                             subtitle: _todayClasses.isEmpty
@@ -200,10 +240,7 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                                 ),
                               );
                             }),
-
                           const SizedBox(height: AppSpacing.lg),
-
-                          // ─── Attendance Summary ────────────────────
                           const _SectionHeader(
                             title: 'Attendance Summary',
                             icon: Icons.insights_rounded,
@@ -256,9 +293,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 // Greeting Header
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 class _GreetingHeader extends StatelessWidget {
   final String greeting;
   final String emoji;
@@ -284,9 +321,7 @@ class _GreetingHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(
-                height: 30,
-              ),
+              const SizedBox(height: 30),
               Row(
                 children: [
                   Text(
@@ -296,12 +331,17 @@ class _GreetingHeader extends StatelessWidget {
                           color: AppColors.textSecondary,
                         ),
                   ),
-                  Text(
-                    firstName,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textPrimary,
-                        ),
+                  Flexible(
+                    child: Text(
+                      firstName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          Theme.of(context).textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                    ),
                   ),
                   const SizedBox(width: 6),
                   Text(emoji, style: const TextStyle(fontSize: 22)),
@@ -310,53 +350,14 @@ class _GreetingHeader extends StatelessWidget {
               const SizedBox(height: 6),
               Row(
                 children: [
-                  _InfoChip(
-                    icon: Icons.badge_outlined,
-                    label: studentId,
-                  ),
+                  _InfoChip(icon: Icons.badge_outlined, label: studentId),
                   const SizedBox(width: 8),
-                  _InfoChip(
-                    icon: Icons.school_outlined,
-                    label: semester,
-                  ),
+                  _InfoChip(icon: Icons.school_outlined, label: semester),
                 ],
               ),
             ],
           ),
         ),
-        // Avatar
-        // Container(
-        //   width: 52,
-        //   height: 52,
-        //   decoration: BoxDecoration(
-        //     gradient: LinearGradient(
-        //       colors: [
-        //         AppColors.primary,
-        //         AppColors.primary.withValues(alpha: .7),
-        //       ],
-        //       begin: Alignment.topLeft,
-        //       end: Alignment.bottomRight,
-        //     ),
-        //     borderRadius: BorderRadius.circular(16),
-        //     boxShadow: [
-        //       BoxShadow(
-        //         color: AppColors.primary.withValues(alpha: .25),
-        //         blurRadius: 12,
-        //         offset: const Offset(0, 4),
-        //       ),
-        //     ],
-        //   ),
-        //   child: Center(
-        //     child: Text(
-        //       firstName.isNotEmpty ? firstName[0].toUpperCase() : '?',
-        //       style: const TextStyle(
-        //         color: Colors.white,
-        //         fontSize: 22,
-        //         fontWeight: FontWeight.w700,
-        //       ),
-        //     ),
-        //   ),
-        // ),
       ],
     );
   }
@@ -395,9 +396,9 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 // Overall Attendance Card
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 class _OverallAttendanceCard extends StatelessWidget {
   final Student student;
   final int belowCount;
@@ -472,7 +473,10 @@ class _OverallAttendanceCard extends StatelessWidget {
                       style: Theme.of(context)
                           .textTheme
                           .titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600, fontSize: 13),
+                          ?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
                     ),
                   ],
                 ),
@@ -491,8 +495,9 @@ class _OverallAttendanceCard extends StatelessWidget {
                   label: belowCount == 0
                       ? 'All courses on track'
                       : '$belowCount course(s) below threshold',
-                  tone:
-                      belowCount == 0 ? StatusTone.success : StatusTone.warning,
+                  tone: belowCount == 0
+                      ? StatusTone.success
+                      : StatusTone.warning,
                   icon: belowCount == 0
                       ? Icons.check_circle_rounded
                       : Icons.warning_amber_rounded,
@@ -506,9 +511,9 @@ class _OverallAttendanceCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 // Section Header
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -562,9 +567,9 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 // Empty State
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final IconData icon;
   final String message;
@@ -619,9 +624,9 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 // Animated List Item
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 class _AnimatedListItem extends StatefulWidget {
   final int index;
   final Widget child;
@@ -679,9 +684,9 @@ class _AnimatedListItemState extends State<_AnimatedListItem>
   }
 }
 
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 // Today Class Card
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
 class _TodayClassCard extends StatefulWidget {
   final _TodayClass data;
   final VoidCallback onTap;
@@ -778,7 +783,6 @@ class _TodayClassCardState extends State<_TodayClassCard> {
                 children: [
                   Row(
                     children: [
-                      // Accent bar
                       Container(
                         width: 3,
                         height: 40,
@@ -873,9 +877,9 @@ class _TodayClassCardState extends State<_TodayClassCard> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Meta Item (time / venue)
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Meta Item
+// ─────────────────────────────────────────────────────────────────────
 class _MetaItem extends StatelessWidget {
   final IconData icon;
   final String text;

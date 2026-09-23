@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/state/app_state.dart';
 import '../../../shared/models/attendance_record.dart';
 import '../../../shared/widgets/attendance_card.dart';
 import '../../../shared/widgets/loading_state.dart';
@@ -46,13 +45,11 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
   bool _isLoading = true;
   List<AttendanceRecord> _records = [];
 
-  // UI state
   AttendanceFilter _filter = AttendanceFilter.all;
   String _query = '';
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
 
-  // Animation
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
 
@@ -88,30 +85,24 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
     _fadeController.forward();
   }
 
-  // ── Filtering + grouping ──────────────────────────────────
+  // ── Filtering + grouping ────────────────────────────────────────────
   List<AttendanceRecord> get _filteredRecords {
     Iterable<AttendanceRecord> list = _records;
 
-    // Filter chip
     switch (_filter) {
       case AttendanceFilter.all:
         break;
       case AttendanceFilter.verified:
-        list = list.where(
-          (r) => r.verification == RecordVerification.verified,
-        );
+        list = list.where((r) => r.verification == RecordVerification.verified);
         break;
       case AttendanceFilter.failed:
-        list = list.where(
-          (r) => r.verification != RecordVerification.verified,
-        );
+        list = list.where((r) => r.verification != RecordVerification.verified);
         break;
       case AttendanceFilter.pendingSync:
         list = list.where((r) => r.syncStatus != SyncStatus.synced);
         break;
     }
 
-    // Search query
     if (_query.trim().isNotEmpty) {
       final q = _query.trim().toLowerCase();
       list = list.where((r) {
@@ -121,9 +112,7 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
       });
     }
 
-    final result = list.toList()
-      ..sort((a, b) => b.date.compareTo(a.date)); // newest first
-    return result;
+    return list.toList()..sort((a, b) => b.date.compareTo(a.date));
   }
 
   List<_MonthGroup> get _grouped {
@@ -136,19 +125,17 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
       dates.putIfAbsent(key, () => DateTime(r.date.year, r.date.month));
     }
 
-    final groups = map.entries.map((e) {
-      return _MonthGroup(
-        label: e.key,
-        monthDate: dates[e.key]!,
-        records: e.value,
-      );
-    }).toList()
+    return map.entries
+        .map((e) => _MonthGroup(
+              label: e.key,
+              monthDate: dates[e.key]!,
+              records: e.value,
+            ))
+        .toList()
       ..sort((a, b) => b.monthDate.compareTo(a.monthDate));
-
-    return groups;
   }
 
-  // ── Stats ─────────────────────────────────────────────────
+  // ── Stats ───────────────────────────────────────────────────────────
   int get _totalCount => _records.length;
   int get _verifiedCount => _records
       .where((r) => r.verification == RecordVerification.verified)
@@ -166,6 +153,10 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.textPrimary,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
         title: _isSearching
             ? _SearchField(
                 controller: _searchController,
@@ -178,7 +169,13 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
                   });
                 },
               )
-            : const Text('Attendance History'),
+            : const Text(
+                'Attendance History',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
         actions: [
           if (!_isSearching && !_isLoading && _records.isNotEmpty)
             IconButton(
@@ -195,110 +192,127 @@ class _AttendanceHistoryScreenState extends State<AttendanceHistoryScreen>
             child: _isLoading
                 ? const LoadingState(message: 'Loading attendance history…')
                 : _records.isEmpty
-                    ? const EmptyState(
-                        icon: Icons.fact_check_outlined,
-                        title: 'No attendance records yet',
-                        message:
-                            'Records will appear here once you start marking attendance.',
-                      )
-                    : FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: RefreshIndicator(
-                          onRefresh: _load,
-                          color: AppColors.primary,
-                          child: CustomScrollView(
-                            slivers: [
-                              // ── Summary card ────────────────
-                              SliverToBoxAdapter(
-                                child: _SummaryCard(
-                                  total: _totalCount,
-                                  verified: _verifiedCount,
-                                  failed: _failedCount,
-                                  rate: _verificationRate,
-                                  pendingSync: _pendingSyncCount,
-                                ),
-                              ),
-
-                              // ── Filter chips ────────────────
-                              SliverToBoxAdapter(
-                                child: _FilterChips(
-                                  selected: _filter,
-                                  onChanged: (f) => setState(() => _filter = f),
-                                  counts: {
-                                    AttendanceFilter.all: _totalCount,
-                                    AttendanceFilter.verified: _verifiedCount,
-                                    AttendanceFilter.failed: _failedCount,
-                                    AttendanceFilter.pendingSync:
-                                        _pendingSyncCount,
-                                  },
-                                ),
-                              ),
-
-                              // ── Empty filter result ─────────
-                              if (_grouped.isEmpty)
-                                SliverFillRemaining(
-                                  hasScrollBody: false,
-                                  child: _NoResultsState(
-                                    query: _query,
-                                    filter: _filter,
-                                    onClear: () {
-                                      setState(() {
-                                        _query = '';
-                                        _filter = AttendanceFilter.all;
-                                        _searchController.clear();
-                                      });
-                                    },
-                                  ),
-                                )
-                              else
-                                // ── Month groups + records ──
-                                ..._grouped.expand((group) sync* {
-                                  yield SliverToBoxAdapter(
-                                    child: _MonthHeader(group: group),
-                                  );
-
-                                  yield SliverPadding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: AppSpacing.lg,
-                                    ),
-                                    sliver: SliverList.builder(
-                                      itemCount: group.records.length,
-                                      itemBuilder: (context, i) {
-                                        final r = group.records[i];
-                                        return Padding(
-                                          padding: const EdgeInsets.only(
-                                            bottom: AppSpacing.sm,
-                                          ),
-                                          child: _AnimatedRecordItem(
-                                            index: i,
-                                            child: AttendanceRecordCard(
-                                              record: r,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  );
-                                }),
-
-                              // Bottom breathing room
-                              const SliverToBoxAdapter(
-                                child: SizedBox(height: AppSpacing.xl),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                    ? _buildEmptyState()
+                    : _buildLoadedState(),
           ),
         ],
       ),
     );
   }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // EMPTY STATE — still pullable
+  // ─────────────────────────────────────────────────────────────────────
+  Widget _buildEmptyState() {
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: AppColors.primary,
+      backgroundColor: AppColors.surface,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [
+          SizedBox(height: 120),
+          EmptyState(
+            icon: Icons.fact_check_outlined,
+            title: 'No attendance records yet',
+            message:
+                'Records will appear here once you start marking attendance.',
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────
+  // LOADED STATE — with slivers, filters, and month groups
+  // ─────────────────────────────────────────────────────────────────────
+  Widget _buildLoadedState() {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: RefreshIndicator(
+        onRefresh: _load,
+        color: AppColors.primary,
+        backgroundColor: AppColors.surface,
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(
+            parent: AlwaysScrollableScrollPhysics(),
+          ),
+          slivers: [
+            SliverToBoxAdapter(
+              child: _SummaryCard(
+                total: _totalCount,
+                verified: _verifiedCount,
+                failed: _failedCount,
+                rate: _verificationRate,
+                pendingSync: _pendingSyncCount,
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: _FilterChips(
+                selected: _filter,
+                onChanged: (f) => setState(() => _filter = f),
+                counts: {
+                  AttendanceFilter.all: _totalCount,
+                  AttendanceFilter.verified: _verifiedCount,
+                  AttendanceFilter.failed: _failedCount,
+                  AttendanceFilter.pendingSync: _pendingSyncCount,
+                },
+              ),
+            ),
+            if (_grouped.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _NoResultsState(
+                  query: _query,
+                  filter: _filter,
+                  onClear: () {
+                    setState(() {
+                      _query = '';
+                      _filter = AttendanceFilter.all;
+                      _searchController.clear();
+                    });
+                  },
+                ),
+              )
+            else
+              ..._grouped.expand((group) sync* {
+                yield SliverToBoxAdapter(
+                  child: _MonthHeader(group: group),
+                );
+                yield SliverPadding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.lg,
+                  ),
+                  sliver: SliverList.builder(
+                    itemCount: group.records.length,
+                    itemBuilder: (context, i) {
+                      final r = group.records[i];
+                      return Padding(
+                        padding: const EdgeInsets.only(
+                          bottom: AppSpacing.sm,
+                        ),
+                        child: _AnimatedRecordItem(
+                          index: i,
+                          child: AttendanceRecordCard(record: r),
+                        ),
+                      );
+                    },
+                  ),
+                );
+              }),
+            const SliverToBoxAdapter(
+              child: SizedBox(height: AppSpacing.xl),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Search field (in AppBar)
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Search field
+// ─────────────────────────────────────────────────────────────────────
 class _SearchField extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
@@ -317,11 +331,14 @@ class _SearchField extends StatelessWidget {
       autofocus: true,
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
-      style: const TextStyle(fontSize: 15),
+      style: const TextStyle(
+        fontSize: 15,
+        color: AppColors.textPrimary,
+      ),
       decoration: InputDecoration(
         hintText: 'Search by course code or name…',
         border: InputBorder.none,
-        hintStyle: TextStyle(
+        hintStyle: const TextStyle(
           color: AppColors.textTertiary,
           fontWeight: FontWeight.w400,
         ),
@@ -335,9 +352,9 @@ class _SearchField extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Summary Card
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Summary card
+// ─────────────────────────────────────────────────────────────────────
 class _SummaryCard extends StatelessWidget {
   final int total;
   final int verified;
@@ -380,8 +397,10 @@ class _SummaryCard extends StatelessWidget {
             end: Alignment.bottomRight,
           ),
           borderRadius: BorderRadius.circular(AppRadius.xl),
-          border:
-              Border.all(color: rateColor.withValues(alpha: .2), width: 1.2),
+          border: Border.all(
+            color: rateColor.withValues(alpha: .2),
+            width: 1.2,
+          ),
           boxShadow: [
             BoxShadow(
               color: rateColor.withValues(alpha: .06),
@@ -395,7 +414,6 @@ class _SummaryCard extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Rate dial
                 _RateDial(rate: rate, color: rateColor),
                 const SizedBox(width: AppSpacing.md),
                 Expanded(
@@ -439,7 +457,7 @@ class _SummaryCard extends StatelessWidget {
                     color: AppColors.textSecondary,
                   ),
                 ),
-                _MiniStatDivider(),
+                const _MiniStatDivider(),
                 Expanded(
                   child: _MiniStat(
                     icon: Icons.verified_rounded,
@@ -448,7 +466,7 @@ class _SummaryCard extends StatelessWidget {
                     color: AppColors.success,
                   ),
                 ),
-                _MiniStatDivider(),
+                const _MiniStatDivider(),
                 Expanded(
                   child: _MiniStat(
                     icon: Icons.close_rounded,
@@ -458,7 +476,7 @@ class _SummaryCard extends StatelessWidget {
                   ),
                 ),
                 if (pendingSync > 0) ...[
-                  _MiniStatDivider(),
+                  const _MiniStatDivider(),
                   Expanded(
                     child: _MiniStat(
                       icon: Icons.cloud_off_rounded,
@@ -557,6 +575,8 @@ class _MiniStat extends StatelessWidget {
 }
 
 class _MiniStatDivider extends StatelessWidget {
+  const _MiniStatDivider();
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -567,9 +587,9 @@ class _MiniStatDivider extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Filter Chips Row
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Filter chips
+// ─────────────────────────────────────────────────────────────────────
 class _FilterChips extends StatelessWidget {
   final AttendanceFilter selected;
   final ValueChanged<AttendanceFilter> onChanged;
@@ -590,26 +610,22 @@ class _FilterChips extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
         children: [
           _chip(
-            context,
             label: 'All',
             filter: AttendanceFilter.all,
             icon: Icons.list_alt_rounded,
           ),
           _chip(
-            context,
             label: 'Verified',
             filter: AttendanceFilter.verified,
             icon: Icons.verified_rounded,
           ),
           _chip(
-            context,
             label: 'Failed',
             filter: AttendanceFilter.failed,
             icon: Icons.close_rounded,
           ),
           if ((counts[AttendanceFilter.pendingSync] ?? 0) > 0)
             _chip(
-              context,
               label: 'Pending sync',
               filter: AttendanceFilter.pendingSync,
               icon: Icons.cloud_off_rounded,
@@ -619,8 +635,7 @@ class _FilterChips extends StatelessWidget {
     );
   }
 
-  Widget _chip(
-    BuildContext context, {
+  Widget _chip({
     required String label,
     required AttendanceFilter filter,
     required IconData icon,
@@ -680,9 +695,9 @@ class _FilterChips extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Month Group Header
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Month header
+// ─────────────────────────────────────────────────────────────────────
 class _MonthHeader extends StatelessWidget {
   final _MonthGroup group;
 
@@ -722,7 +737,6 @@ class _MonthHeader extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          // Attendance summary for month
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -786,9 +800,9 @@ class _CountPill extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// No Results (filtered empty)
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// No results
+// ─────────────────────────────────────────────────────────────────────
 class _NoResultsState extends StatelessWidget {
   final String query;
   final AttendanceFilter filter;
@@ -850,9 +864,9 @@ class _NoResultsState extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Staggered list item animation
-// ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────
+// Animated list item
+// ─────────────────────────────────────────────────────────────────────
 class _AnimatedRecordItem extends StatefulWidget {
   final int index;
   final Widget child;

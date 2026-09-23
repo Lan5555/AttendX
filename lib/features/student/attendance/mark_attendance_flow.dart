@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../shared/models/course.dart';
@@ -41,6 +42,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
 
   final MobileScannerController _scannerController = MobileScannerController(
     detectionSpeed: DetectionSpeed.noDuplicates,
+    formats: const [BarcodeFormat.qrCode],
   );
 
   late final String _clientRecordId;
@@ -48,7 +50,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
   @override
   void initState() {
     super.initState();
-    _clientRecordId = 'att_${DateTime.now().millisecondsSinceEpoch}';
+    _clientRecordId = const Uuid().v4();
   }
 
   @override
@@ -65,9 +67,20 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
 
   void _onQrDetected(String scannedData) {
     if (_stage != _FlowStage.scan) return;
+
+    final raw = scannedData.trim();
+
+    // A real attendance QR contains a JSON payload with a sessionId.
+    // Ignore anything else (ML Kit noise, unrelated QR codes, stale
+    // screenshots) and keep the camera open.
+    if (!raw.startsWith('{') || !raw.contains('sessionId')) {
+      debugPrint('Ignoring non-attendance QR: $raw');
+      return;
+    }
+
     setState(() => _stage = _FlowStage.verifying);
 
-    _sub = _processQrScan(scannedData).listen(
+    _sub = _processQrScan(raw).listen(
       (v) {
         setState(() => _verification = v);
 
@@ -92,40 +105,67 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
     );
   }
 
-  /// Real QR parsing + mocked BLE/identity stages. Replace the TODO
-  /// sections with real service calls when they're ready.
+  /// Parses the scanned QR and runs through the verification stages.
+  /// Handles JSON, URL, and delimited payloads.
   Stream<AttendanceVerification> _processQrScan(String scannedData) async* {
-    // --- Stage 1: QR verification ---
+    // ── Stage 1: QR verification ─────────────────────────────────────────
     var v = const AttendanceVerification(
       qrStatus: VerificationStageStatus.inProgress,
     );
     yield v;
 
-    Map<String, dynamic> qrPayload;
+    final raw = scannedData.trim();
+
+    String? sessionId;
+    String? qrToken;
+
+    print(sessionId);
+    print(qrToken);
+
+    // Attempt 1: JSON object like {"sessionId":"...","token":"..."}
     try {
-      qrPayload = jsonDecode(scannedData) as Map<String, dynamic>;
-    } catch (_) {
-      final uri = Uri.tryParse(scannedData);
-      if (uri == null) {
-        yield v.copyWith(qrStatus: VerificationStageStatus.failed);
-        return;
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        sessionId = decoded['sessionId'] as String?;
+        qrToken = (decoded['token'] ?? decoded['qrToken']) as String?;
       }
-      qrPayload = {
-        'sessionId': uri.queryParameters['sessionId'],
-        'token': uri.queryParameters['token'],
-      };
+    } catch (_) {
+      // Not JSON — fall through.
     }
 
-    final sessionId = qrPayload['sessionId'] as String?;
-    final qrToken =
-        qrPayload['token'] as String? ?? qrPayload['qrToken'] as String?;
+    // Attempt 2: URL like https://.../scan?sessionId=...&token=...
+    if (sessionId == null || qrToken == null) {
+      final uri = Uri.tryParse(raw);
+      if (uri != null && uri.hasQuery) {
+        sessionId = uri.queryParameters['sessionId'];
+        qrToken =
+            uri.queryParameters['token'] ?? uri.queryParameters['qrToken'];
+      }
+    }
+
+    // Attempt 3: Delimited format "sessionId:token" or "sessionId|token"
+    if (sessionId == null || qrToken == null) {
+      for (final delim in [':', '|', ',']) {
+        final parts = raw.split(delim);
+        if (parts.length == 2 && parts[0].isNotEmpty && parts[1].isNotEmpty) {
+          sessionId = parts[0].trim();
+          qrToken = parts[1].trim();
+          break;
+        }
+      }
+    }
 
     if (sessionId == null || qrToken == null) {
       yield v.copyWith(qrStatus: VerificationStageStatus.failed);
+      _errorTitle = 'Invalid QR code';
+      _errorMessage =
+          'This QR doesn\'t look like an attendance code. Ask your lecturer '
+          'to refresh the QR and try again.';
       return;
     }
 
-    // TODO: validate the QR token with the backend.
+    debugPrint('Parsed sessionId=$sessionId token=$qrToken');
+
     await Future.delayed(const Duration(milliseconds: 300));
 
     v = v.copyWith(
@@ -135,7 +175,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
     );
     yield v;
 
-    // --- Stage 2: BLE proximity ---
+    // ── Stage 2: BLE proximity ───────────────────────────────────────────
     v = v.copyWith(bleStatus: VerificationStageStatus.inProgress);
     yield v;
 
@@ -148,7 +188,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
     );
     yield v;
 
-    // --- Stage 3: Identity / liveness ---
+    // ── Stage 3: Identity / liveness ─────────────────────────────────────
     v = v.copyWith(identityStatus: VerificationStageStatus.inProgress);
     yield v;
 
@@ -161,7 +201,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
     );
     yield v;
 
-    // --- Stage 4: Record ---
+    // ── Stage 4: Record ──────────────────────────────────────────────────
     v = v.copyWith(attendanceStatus: VerificationStageStatus.success);
     yield v;
   }
@@ -238,7 +278,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
   }
 
   // ─────────────────────────────────────────────────────────────────────
-  // SCAN STEP — live camera
+  // SCAN STEP
   // ─────────────────────────────────────────────────────────────────────
   Widget _buildScanStep() {
     return Column(
@@ -282,7 +322,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
             'Scan the QR code displayed by your lecturer.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 13,
             ),
           ),
@@ -299,9 +339,15 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
                   child: MobileScanner(
                     controller: _scannerController,
                     onDetect: (capture) {
-                      final barcode = capture.barcodes.firstOrNull;
-                      final value = barcode?.rawValue;
-                      if (value != null) _onQrDetected(value);
+                      final qr = capture.barcodes.firstWhere(
+                        (b) => b.format == BarcodeFormat.qrCode,
+                        orElse: () => const Barcode(),
+                      );
+                      final value = qr.rawValue;
+                      if (value != null && value.isNotEmpty) {
+                        debugPrint('QR raw: $value');
+                        _onQrDetected(value);
+                      }
                     },
                     errorBuilder: (context, error) {
                       return Center(
@@ -313,7 +359,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
                     },
                   ),
                 ),
-                const QrScannerFrame(),
+                //const QrScannerFrame(),
               ],
             ),
           ),
@@ -325,7 +371,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
             'Position the QR code inside the frame.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.35),
+              color: Colors.white.withValues(alpha: 0.35),
               fontSize: 11,
             ),
           ),
@@ -358,7 +404,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
           width: 120,
           height: 120,
           decoration: BoxDecoration(
-            color: AppColors.securityAccent.withValues(alpha:0.1),
+            color: AppColors.securityAccent.withValues(alpha: 0.1),
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -366,7 +412,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
               width: 84,
               height: 84,
               decoration: BoxDecoration(
-                color: AppColors.securityAccent.withValues(alpha:0.16),
+                color: AppColors.securityAccent.withValues(alpha: 0.16),
                 shape: BoxShape.circle,
               ),
               child: Icon(icon, color: AppColors.securityAccent, size: 36),
@@ -389,7 +435,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
             subtitle,
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 13,
             ),
           ),
@@ -480,7 +526,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
             'Your attendance has been successfully recorded.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 13,
             ),
           ),
@@ -519,8 +565,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
           StatusBadge(
             label: _synced ? 'Synced' : 'Saved offline',
             tone: _synced ? StatusTone.success : StatusTone.warning,
-            icon:
-                _synced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
+            icon: _synced ? Icons.cloud_done_rounded : Icons.cloud_off_rounded,
           ),
           if (!_synced) ...[
             const SizedBox(height: 8),
@@ -528,7 +573,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
               'Attendance saved securely. It will sync automatically when you are back online.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white.withValues(alpha:0.5),
+                color: Colors.white.withValues(alpha: 0.5),
                 fontSize: 11.5,
               ),
             ),
@@ -579,7 +624,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
             _errorMessage ?? 'Please try again.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha:0.6),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 13,
             ),
           ),
@@ -615,7 +660,7 @@ class _SuccessRow extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha:0.55),
+            color: Colors.white.withValues(alpha: 0.55),
             fontSize: 13,
           ),
         ),

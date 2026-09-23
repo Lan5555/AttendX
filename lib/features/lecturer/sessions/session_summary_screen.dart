@@ -117,7 +117,7 @@ class _StatBlock extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 14),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
+        color: color.withValues(alpha: .08),
         borderRadius: BorderRadius.circular(AppRadius.md),
       ),
       child: Column(

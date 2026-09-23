@@ -190,7 +190,7 @@ class _FormatTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
-          color: selected ? AppColors.primary.withOpacity(0.08) : AppColors.surfaceAlt,
+          color: selected ? AppColors.primary.withValues(alpha: .08) : AppColors.surfaceAlt,
           borderRadius: BorderRadius.circular(AppRadius.md),
           border: Border.all(color: selected ? AppColors.primary : Colors.transparent, width: 1.4),
         ),

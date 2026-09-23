@@ -49,9 +49,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                   width: 84,
                   height: 84,
                   decoration: BoxDecoration(
-                    color: AppColors.securityAccent.withOpacity(0.12),
+                    color: AppColors.securityAccent.withValues(alpha: .12),
                     shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.securityAccent.withOpacity(0.5), width: 1.4),
+                    border: Border.all(color: AppColors.securityAccent.withValues(alpha: .5), width: 1.4),
                   ),
                   child: const Icon(Icons.verified_user_rounded, color: AppColors.securityAccent, size: 40),
                 ),
@@ -68,7 +68,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
                 const SizedBox(height: 8),
                 Text(
                   AppConstants.tagline,
-                  style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.w500),
+                  style: TextStyle(color: Colors.white.withValues(alpha: .6), fontSize: 13, fontWeight: FontWeight.w500),
                 ),
               ],
             ),

@@ -60,7 +60,7 @@ class CourseCard extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withOpacity(0.08),
+                      color: AppColors.primary.withValues(alpha: .08),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     child: const Icon(Icons.menu_book_rounded, color: AppColors.primary, size: 20),

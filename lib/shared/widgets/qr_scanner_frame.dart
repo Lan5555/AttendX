@@ -44,13 +44,13 @@ class _QrScannerFrameState extends State<QrScannerFrame> with SingleTickerProvid
                   height: 2.4,
                   decoration: BoxDecoration(
                     boxShadow: [
-                      BoxShadow(color: AppColors.securityAccent.withOpacity(0.8), blurRadius: 8),
+                      BoxShadow(color: AppColors.securityAccent.withValues(alpha: 0.8), blurRadius: 8),
                     ],
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.securityAccent.withOpacity(0),
+                        AppColors.securityAccent.withValues(alpha: 0),
                         AppColors.securityAccent,
-                        AppColors.securityAccent.withOpacity(0),
+                        AppColors.securityAccent.withValues(alpha: 0),
                       ],
                     ),
                   ),

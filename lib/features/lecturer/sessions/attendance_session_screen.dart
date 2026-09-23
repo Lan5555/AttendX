@@ -1,124 +1,163 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:provider/provider.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/state/app_state.dart';
+import '../../../controllers/session_controller.dart';
 import '../../../shared/models/attendance_session.dart';
-import '../../../shared/mock/mock_data.dart';
 import '../../../shared/widgets/app_button.dart';
 import 'session_summary_screen.dart';
 
-/// Live lecturer attendance session: dynamic (mock) QR, live present
-/// count and recent scans, pause/end controls. The QR payload and
-/// TOTP-style rotation are mocked by [SessionService]; the real
-/// cryptographic generation plugs into the same stream later.
 class AttendanceSessionScreen extends StatefulWidget {
   final AttendanceSession session;
   const AttendanceSessionScreen({super.key, required this.session});
 
   @override
-  State<AttendanceSessionScreen> createState() => _AttendanceSessionScreenState();
+  State<AttendanceSessionScreen> createState() =>
+      _AttendanceSessionScreenState();
 }
 
 class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
-  AttendanceSession? _session;
-  StreamSubscription<AttendanceSession>? _sub;
-  Timer? _countdownTimer;
-  int _secondsToRefresh = 8;
-  bool _isStarting = true;
-
   @override
   void initState() {
     super.initState();
-    _start();
-  }
-
-  Future<void> _start() async {
-    // final appState = context.read<AppState>();
-    // final started = await appState.sessionService.startSession(widget.session.courseId);
-    // if (!mounted) return;
-    // setState(() {
-    //   _session = started;
-    //   _isStarting = false;
-    // });
-    // _sub = appState.sessionService.watchSession(started.id).listen((s) {
-    //   if (!mounted) return;
-    //   setState(() {
-    //     _session = s;
-    //     _secondsToRefresh = 8;
-    //   });
-    // });
-    // _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-    //   if (!mounted) return;
-    //   setState(() {
-    //     _secondsToRefresh = _secondsToRefresh > 0 ? _secondsToRefresh - 1 : 8;
-    //   });
-    // });
+    // Start the session after the first frame so we have a valid context
+    // to read the controller.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<SessionController>().startSession(widget.session.courseId);
+    });
+    
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
-    _countdownTimer?.cancel();
+    // Clear the controller state when this screen goes away so a stale
+    // session doesn't leak into the next one.
+    // Use scheduleMicrotask so we're not notifying during dispose.
+    final controller = context.read<SessionController>();
+    scheduleMicrotask(() => controller.clearActiveSession());
     super.dispose();
   }
 
-  Future<void> _togglePause() async {
-    // final s = _session;
-    // if (s == null) return;
-    // final appState = context.read<AppState>();
-    // if (s.status == SessionStatus.active) {
-    //   final updated = await appState.sessionService.pauseSession(s.id);
-    //   setState(() => _session = updated);
-    // } else {
-    //   // Resume by re-marking active locally (mock service keeps ticking only while active).
-    //   setState(() => _session = s.copyWith(status: SessionStatus.active));
-    // }
+  Future<void> _onTogglePause() async {
+    await context.read<SessionController>().togglePause();
   }
 
-  Future<void> _confirmEnd() async {
+  Future<void> _onEndPressed() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('End Session?'),
-        content: const Text('This will stop accepting new attendance scans for this class. This cannot be undone.'),
+        content: const Text(
+          'This will stop accepting new attendance scans for this class. '
+          'This cannot be undone.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('End Session', style: TextStyle(color: AppColors.error)),
+            child: const Text(
+              'End Session',
+              style: TextStyle(color: AppColors.error),
+            ),
           ),
         ],
       ),
     );
-    if (confirmed != true || _session == null) return;
 
-    // final appState = context.read<AppState>();
-    // final ended = await appState.sessionService.endSession(_session!.id);
-    // if (!mounted) return;
-    // Navigator.of(context).pushReplacement(
-    //   MaterialPageRoute(builder: (_) => SessionSummaryScreen(session: ended)),
-    // );
+    if (confirmed != true || !mounted) return;
+
+    final summary =
+        await context.read<SessionController>().endSession();
+
+    if (!mounted || summary == null) return;
+
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => SessionSummaryScreen(session: summary),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isStarting || _session == null) {
+    final controller = context.watch<SessionController>();
+
+    // Starting — spinner.
+    if (controller.isStarting || controller.activeSession == null) {
       return const Scaffold(
         backgroundColor: AppColors.securityDark,
-        body: Center(child: CircularProgressIndicator(color: AppColors.securityAccent)),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: AppColors.securityAccent,
+          ),
+        ),
       );
     }
-    final session = _session!;
-    final paused = session.status == SessionStatus.paused;
+
+    // Start failed — error state.
+    if (controller.error != null && controller.activeSession == null) {
+      return Scaffold(
+        backgroundColor: AppColors.securityDark,
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.cloud_off_rounded,
+                    color: Colors.white54,
+                    size: 48,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    controller.error!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: .7),
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  AppButton(
+                    label: 'Retry',
+                    icon: Icons.refresh_rounded,
+                    onPressed: () => context
+                        .read<SessionController>()
+                        .startSession(widget.session.courseId),
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final session = controller.activeSession!;
+    final paused = controller.isPaused;
 
     return Scaffold(
       backgroundColor: AppColors.securityDark,
       body: SafeArea(
         child: Column(
           children: [
+            // ── Top bar ──────────────────────────────────────────────
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.sm),
               child: Row(
@@ -130,8 +169,21 @@ class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
                   Expanded(
                     child: Column(
                       children: [
-                        Text(session.courseCode, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15)),
-                        Text(session.courseTitle, style: TextStyle(color: Colors.white.withValues(alpha: .5), fontSize: 11.5)),
+                        Text(
+                          session.courseCode,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Text(
+                          session.courseTitle,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: .5),
+                            fontSize: 11.5,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -140,12 +192,22 @@ class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
               ),
             ),
             const SizedBox(height: 4),
-            Text(session.timeRangeLabel, style: TextStyle(color: Colors.white.withValues(alpha: .5), fontSize: 12)),
+            Text(
+              session.timeRangeLabel,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .5),
+                fontSize: 12,
+              ),
+            ),
             const SizedBox(height: AppSpacing.md),
+
+            // ── Status pill ──────────────────────────────────────────
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: (paused ? AppColors.warning : AppColors.success).withValues(alpha: .15),
+                color: (paused ? AppColors.warning : AppColors.success)
+                    .withValues(alpha: .15),
                 borderRadius: BorderRadius.circular(AppRadius.pill),
               ),
               child: Text(
@@ -158,77 +220,136 @@ class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
               ),
             ),
             const SizedBox(height: AppSpacing.md),
+
+            // ── QR ───────────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(AppRadius.lg)),
-              child: QrImageView(
-                data: session.qrPayload.isEmpty ? 'attendx-session' : session.qrPayload,
-                version: QrVersions.auto,
-                size: 200,
-                gapless: false,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppRadius.lg),
               ),
+              child: paused
+                  ? const SizedBox(
+                      width: 200,
+                      height: 200,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.pause_circle_outline_rounded,
+                              color: AppColors.warning,
+                              size: 56,
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Paused',
+                              style: TextStyle(
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : QrImageView(
+                      data: controller.qrToken.isEmpty
+                          ? 'attendx-session-${session.id}'
+                          : controller.qrToken,
+                      version: QrVersions.auto,
+                      size: 200,
+                      gapless: false,
+                    ),
             ),
             const SizedBox(height: AppSpacing.sm),
-            Text('QR refreshes automatically', style: TextStyle(color: Colors.white.withValues(alpha: .5), fontSize: 12)),
-            Text('Refreshes in ${_secondsToRefresh}s', style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w700)),
+            Text(
+              'QR refreshes automatically',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: .5),
+                fontSize: 12,
+              ),
+            ),
+            Text(
+              paused
+                  ? 'Paused'
+                  : 'Refreshes in ${controller.secondsUntilRefresh}s',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
             const SizedBox(height: AppSpacing.md),
+
+            // ── Present count ────────────────────────────────────────
             Container(
               margin: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               padding: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(color: AppColors.securityDarkAlt, borderRadius: BorderRadius.circular(AppRadius.md)),
+              decoration: BoxDecoration(
+                color: AppColors.securityDarkAlt,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.people_alt_rounded, color: AppColors.securityAccent, size: 18),
+                  const Icon(
+                    Icons.people_alt_rounded,
+                    color: AppColors.securityAccent,
+                    size: 18,
+                  ),
                   const SizedBox(width: 8),
-                  Text('Present: ${session.presentCount} / ${session.totalStudents}',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+                  Text(
+                    'Present: ${controller.presentCount} / ${session.totalStudents}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
                 ],
               ),
             ),
             const SizedBox(height: AppSpacing.md),
+
+            // ── Bottom panel ─────────────────────────────────────────
             Expanded(
               child: Container(
                 width: double.infinity,
-                padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, 0),
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.lg,
+                  AppSpacing.md,
+                  AppSpacing.lg,
+                  0,
+                ),
                 decoration: const BoxDecoration(
                   color: AppColors.surface,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(AppRadius.xl)),
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(AppRadius.xl),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Recent Attendance', style: Theme.of(context).textTheme.titleMedium),
+                    Text(
+                      'Recent Attendance',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
                     const SizedBox(height: AppSpacing.sm),
                     Expanded(
-                      child: session.presentCount == 0
-                          ? const Center(child: Text('Waiting for the first scan…'))
-                          : ListView.separated(
-                              itemCount: session.presentCount.clamp(0, MockData.mockRoster.length),
-                              separatorBuilder: (_, __) => const Divider(height: 16),
-                              itemBuilder: (context, i) {
-                                final entry = MockData.mockRoster[i % MockData.mockRoster.length];
-                                return Row(
-                                  children: [
-                                    const CircleAvatar(
-                                      radius: 16,
-                                      backgroundColor: AppColors.successBg,
-                                      child: Icon(Icons.check_rounded, color: AppColors.success, size: 16),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(entry['name']!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                          Text(entry['id']!, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                                        ],
-                                      ),
-                                    ),
-                                    Text(entry['time']!, style: const TextStyle(fontSize: 11, color: AppColors.textTertiary)),
-                                  ],
-                                );
-                              },
+                      child: controller.presentCount == 0
+                          ? const Center(
+                              child: Text('Waiting for the first scan…'),
+                            )
+                          : Center(
+                              child: Text(
+                                '${controller.presentCount} student'
+                                '${controller.presentCount == 1 ? '' : 's'} '
+                                'marked present',
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
                             ),
                     ),
                     const SizedBox(height: AppSpacing.sm),
@@ -236,20 +357,29 @@ class _AttendanceSessionScreenState extends State<AttendanceSessionScreen> {
                       children: [
                         Expanded(
                           child: AppButton(
-                            label: paused ? 'Resume' : 'Pause Attendance',
+                            label: paused
+                                ? 'Resume'
+                                : 'Pause Attendance',
                             variant: AppButtonVariant.outlined,
-                            icon: paused ? Icons.play_arrow_rounded : Icons.pause_rounded,
-                            onPressed: _togglePause,
-                            fontSize: 11,
+                            icon: paused
+                                ? Icons.play_arrow_rounded
+                                : Icons.pause_rounded,
+                            onPressed:
+                                controller.isEnding ? null : _onTogglePause,
+                            fontSize: 9,
                           ),
                         ),
                         const SizedBox(width: AppSpacing.sm),
                         Expanded(
                           child: AppButton(
-                            label: 'End Session',
+                            label: controller.isEnding
+                                ? 'Ending…'
+                                : 'End Session',
                             variant: AppButtonVariant.danger,
                             icon: Icons.stop_circle_outlined,
-                            onPressed: _confirmEnd,
+                            onPressed:
+                                controller.isEnding ? null : _onEndPressed,
+                            fontSize: 9,
                           ),
                         ),
                       ],
