@@ -102,6 +102,7 @@ class _LoginScreenState extends State<LoginScreen>
         await _storage!.write(key: 'accessToken', value: user.accessToken);
         await _storage!.write(key: 'userRole', value: 'student');
         auth.setCurrentUser(user);
+       
         if (!mounted) return;
         context.go('/student');
       } else if (role == UserRole.lecturer.name) {
@@ -188,8 +189,8 @@ class _LoginScreenState extends State<LoginScreen>
                               borderRadius: BorderRadius.circular(18),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppColors.primary
-                                      .withValues(alpha: .3),
+                                  color:
+                                      AppColors.primary.withValues(alpha: .3),
                                   blurRadius: 20,
                                   offset: const Offset(0, 10),
                                 ),
@@ -244,8 +245,8 @@ class _LoginScreenState extends State<LoginScreen>
                                       padding: const EdgeInsets.all(12),
                                       decoration: BoxDecoration(
                                         color: AppColors.errorBg,
-                                        borderRadius: BorderRadius.circular(
-                                            AppRadius.md),
+                                        borderRadius:
+                                            BorderRadius.circular(AppRadius.md),
                                         border: Border.all(
                                           color: AppColors.error
                                               .withValues(alpha: .2),
@@ -283,14 +284,11 @@ class _LoginScreenState extends State<LoginScreen>
                             padding: const EdgeInsets.all(AppSpacing.md),
                             decoration: BoxDecoration(
                               color: AppColors.surface,
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.xl),
-                              border:
-                                  Border.all(color: AppColors.outline),
+                              borderRadius: BorderRadius.circular(AppRadius.xl),
+                              border: Border.all(color: AppColors.outline),
                               boxShadow: [
                                 BoxShadow(
-                                  color: Colors.black
-                                      .withValues(alpha: .03),
+                                  color: Colors.black.withValues(alpha: .03),
                                   blurRadius: 16,
                                   offset: const Offset(0, 4),
                                 ),
@@ -304,8 +302,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   controller: _identifierController,
                                   hint: 'you@university.edu',
                                   icon: Icons.person_outline_rounded,
-                                  keyboardType:
-                                      TextInputType.emailAddress,
+                                  keyboardType: TextInputType.emailAddress,
                                   textInputAction: TextInputAction.next,
                                   focusNode: _identifierFocus,
                                   onSubmitted: (_) => FocusScope.of(context)
@@ -330,10 +327,9 @@ class _LoginScreenState extends State<LoginScreen>
                                   textInputAction: TextInputAction.done,
                                   focusNode: _passwordFocus,
                                   onSubmitted: (_) => _handleLogin(),
-                                  validator: (v) =>
-                                      (v == null || v.length < 4)
-                                          ? 'At least 4 characters'
-                                          : null,
+                                  validator: (v) => (v == null || v.length < 4)
+                                      ? 'At least 4 characters'
+                                      : null,
                                 ),
 
                                 // Forgot password
@@ -358,8 +354,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       tapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
                                     ),
-                                    child:
-                                        const Text('Forgot Password?'),
+                                    child: const Text('Forgot Password?'),
                                   ),
                                 ),
                               ],
@@ -371,8 +366,7 @@ class _LoginScreenState extends State<LoginScreen>
                           // ── Primary CTA ────────────────────────────
                           Container(
                             decoration: BoxDecoration(
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.md),
+                              borderRadius: BorderRadius.circular(AppRadius.md),
                               boxShadow: _isLoading
                                   ? null
                                   : [
@@ -388,20 +382,18 @@ class _LoginScreenState extends State<LoginScreen>
                               height: 52,
                               width: double.infinity,
                               child: FilledButton.icon(
-                                onPressed:
-                                    _isLoading ? null : _handleLogin,
+                                onPressed: _isLoading ? null : _handleLogin,
                                 style: FilledButton.styleFrom(
                                   backgroundColor: AppColors.primary,
                                   foregroundColor: AppColors.onPrimary,
-                                  disabledBackgroundColor: AppColors.primary
-                                      .withValues(alpha: .5),
+                                  disabledBackgroundColor:
+                                      AppColors.primary.withValues(alpha: .5),
                                   disabledForegroundColor:
-                                      AppColors.onPrimary
-                                          .withValues(alpha: .7),
+                                      AppColors.onPrimary.withValues(alpha: .7),
                                   elevation: 0,
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(
-                                        AppRadius.md),
+                                    borderRadius:
+                                        BorderRadius.circular(AppRadius.md),
                                   ),
                                 ),
                                 icon: _isLoading
@@ -410,13 +402,11 @@ class _LoginScreenState extends State<LoginScreen>
                                         height: 18,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation(
-                                                  Colors.white),
+                                          valueColor: AlwaysStoppedAnimation(
+                                              Colors.white),
                                         ),
                                       )
-                                    : const Icon(Icons.login_rounded,
-                                        size: 20),
+                                    : const Icon(Icons.login_rounded, size: 20),
                                 label: Text(
                                   _isLoading ? 'Signing in…' : 'Login',
                                   style: const TextStyle(
@@ -435,8 +425,7 @@ class _LoginScreenState extends State<LoginScreen>
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: AppColors.infoBg,
-                              borderRadius:
-                                  BorderRadius.circular(AppRadius.md),
+                              borderRadius: BorderRadius.circular(AppRadius.md),
                               border: Border.all(
                                 color: AppColors.info.withValues(alpha: .15),
                               ),
@@ -486,8 +475,8 @@ class _LoginScreenState extends State<LoginScreen>
                                     ? null
                                     : () => context.push('/register'),
                                 style: TextButton.styleFrom(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6),
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 6),
                                   minimumSize: const Size(0, 36),
                                   tapTargetSize:
                                       MaterialTapTargetSize.shrinkWrap,

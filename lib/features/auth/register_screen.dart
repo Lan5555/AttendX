@@ -128,7 +128,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       "department": _departmentController.text.trim(),
       "faculty": _facultyController.text.trim(),
       "biometricToken": _biometricToken,
-      "title": _titleController.text.trim()
+      "title": '${_titleController.text.trim()}.'
     };
     final auth = context.read<AuthController>();
     final result = _selectedRole == UserRole.student
@@ -140,8 +140,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = false);
 
     if (result.success) {
-      final role = result.data['user']!.role;
-      if (role == UserRole.student) {
+      final role = result.data['user']!['role'] as String;
+      if (role == UserRole.student.name) {
         final user = Student.fromJson(result.data);
         auth.currentUser = user;
         await _storage!.write(key: 'accessToken', value: user.accessToken);
