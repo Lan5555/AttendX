@@ -1,3 +1,4 @@
+import 'package:attendx/features/auth/ping-server.dart';
 import 'package:go_router/go_router.dart';
 import '../../features/auth/splash_screen.dart';
 import '../../features/auth/login_screen.dart';
@@ -13,6 +14,7 @@ final GoRouter appRouter = GoRouter(
   initialLocation: '/splash',
   routes: [
     GoRoute(path: '/splash', builder: (context, state) => const SplashScreen()),
+    GoRoute(path: '/ping', builder: (context, state) => const SplashScreenPing()),
     GoRoute(path: '/login', builder: (context, state) => const LoginScreen()),
     GoRoute(path: '/register', builder: (context, state) => const RegisterScreen()),
     GoRoute(path: '/student', builder: (context, state) => const StudentShell()),

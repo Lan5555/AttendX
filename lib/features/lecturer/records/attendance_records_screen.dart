@@ -1,4 +1,5 @@
 import 'package:attendx/controllers/course_controller.dart';
+import 'package:attendx/features/lecturer/export/export_screen.dart';
 import 'package:attendx/services/attendance_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -366,170 +367,187 @@ class _AttendanceRecordsScreenState extends State<AttendanceRecordsScreen> {
   // ─────────────────────────────────────────────────────────────────────
   // HEADER
   // ─────────────────────────────────────────────────────────────────────
-  Widget _buildHeader() {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.outline)),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.sm,
-              AppSpacing.sm,
-              AppSpacing.lg,
-              0,
-            ),
-            child: Row(
-              children: [
-                IconButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: const Icon(Icons.arrow_back_rounded,
-                      color: AppColors.textPrimary),
+ Widget _buildHeader() {
+  return Container(
+    decoration: const BoxDecoration(
+      color: AppColors.surface,
+      border: Border(bottom: BorderSide(color: AppColors.outline)),
+    ),
+    child: Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.sm,
+            AppSpacing.sm,
+            AppSpacing.sm,
+            0,
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: AppColors.textPrimary,
                 ),
-                const Expanded(
-                  child: Text(
-                    'Attendance Records',
-                    style: TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
+              ),
+              const Expanded(
+                child: Text(
+                  'Attendance Records',
+                  style: TextStyle(
+                    color: AppColors.textPrimary,
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              if (_selectedCourse != null)
+                IconButton(
+                  tooltip: 'Export attendance',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => ExportScreen(
+                        preselectedCourseId: _selectedCourse!.id,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.sm,
-              AppSpacing.lg,
-              0,
-            ),
-            child: _CoursePickerTile(
-              course: _selectedCourse,
-              onTap: _openCoursePicker,
-            ),
-          ),
-          if (_selectedCourse != null && !_recordsLoading) ...[
-            const SizedBox(height: AppSpacing.md),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppSpacing.lg,
-              ),
-              child: Row(
-                children: [
-                  _SummaryStat(
-                    label: 'Present',
-                    value: '$_presentCount',
-                    color: AppColors.success,
-                  ),
-                  const SizedBox(width: 8),
-                  _SummaryStat(
-                    label: 'Absent',
-                    value: '$_absentCount',
-                    color: AppColors.error,
-                  ),
-                  const SizedBox(width: 8),
-                  _SummaryStat(
-                    label: 'Total',
-                    value: '$_totalCount',
+                  icon: const Icon(
+                    Icons.file_download_outlined,
                     color: AppColors.primary,
                   ),
-                ],
-              ),
-            ),
-          ],
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.md,
-              AppSpacing.lg,
-              0,
-            ),
-            child: TextField(
-              controller: _searchController,
-              style: const TextStyle(
-                color: AppColors.textPrimary,
-                fontSize: 14,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search by name or ID',
-                hintStyle: const TextStyle(
-                  color: AppColors.textTertiary,
-                  fontSize: 13.5,
                 ),
-                prefixIcon: const Icon(
-                  Icons.search_rounded,
-                  size: 20,
-                  color: AppColors.textTertiary,
-                ),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(
-                          Icons.close_rounded,
-                          size: 18,
-                          color: AppColors.textTertiary,
-                        ),
-                        onPressed: () => _searchController.clear(),
-                      ),
-                filled: true,
-                fillColor: AppColors.surfaceAlt,
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  borderSide: BorderSide.none,
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                  borderSide:
-                      const BorderSide(color: AppColors.primary, width: 1.4),
-                ),
-              ),
-            ),
+            ],
           ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.sm,
+            AppSpacing.lg,
+            0,
+          ),
+          child: _CoursePickerTile(
+            course: _selectedCourse,
+            onTap: _openCoursePicker,
+          ),
+        ),
+        if (_selectedCourse != null && !_recordsLoading) ...[
+          const SizedBox(height: AppSpacing.md),
           Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.lg,
-              AppSpacing.md,
-              AppSpacing.lg,
-              AppSpacing.md,
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
             ),
             child: Row(
               children: [
-                _FilterChip(
-                  label: 'All',
-                  count: _totalCount,
-                  selected: _filter == _AttendanceFilter.all,
-                  onTap: () => setState(() => _filter = _AttendanceFilter.all),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
+                _SummaryStat(
                   label: 'Present',
-                  count: _presentCount,
-                  selected: _filter == _AttendanceFilter.present,
-                  onTap: () =>
-                      setState(() => _filter = _AttendanceFilter.present),
+                  value: '$_presentCount',
+                  color: AppColors.success,
                 ),
                 const SizedBox(width: 8),
-                _FilterChip(
+                _SummaryStat(
                   label: 'Absent',
-                  count: _absentCount,
-                  selected: _filter == _AttendanceFilter.absent,
-                  onTap: () =>
-                      setState(() => _filter = _AttendanceFilter.absent),
+                  value: '$_absentCount',
+                  color: AppColors.error,
+                ),
+                const SizedBox(width: 8),
+                _SummaryStat(
+                  label: 'Total',
+                  value: '$_totalCount',
+                  color: AppColors.primary,
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.md,
+            AppSpacing.lg,
+            0,
+          ),
+          child: TextField(
+            controller: _searchController,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+            ),
+            decoration: InputDecoration(
+              hintText: 'Search by name or ID',
+              hintStyle: const TextStyle(
+                color: AppColors.textTertiary,
+                fontSize: 13.5,
+              ),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                size: 20,
+                color: AppColors.textTertiary,
+              ),
+              suffixIcon: _searchController.text.isEmpty
+                  ? null
+                  : IconButton(
+                      icon: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: AppColors.textTertiary,
+                      ),
+                      onPressed: () => _searchController.clear(),
+                    ),
+              filled: true,
+              fillColor: AppColors.surfaceAlt,
+              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                borderSide:
+                    const BorderSide(color: AppColors.primary, width: 1.4),
+              ),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            AppSpacing.md,
+            AppSpacing.lg,
+            AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              _FilterChip(
+                label: 'All',
+                count: _totalCount,
+                selected: _filter == _AttendanceFilter.all,
+                onTap: () =>
+                    setState(() => _filter = _AttendanceFilter.all),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Present',
+                count: _presentCount,
+                selected: _filter == _AttendanceFilter.present,
+                onTap: () =>
+                    setState(() => _filter = _AttendanceFilter.present),
+              ),
+              const SizedBox(width: 8),
+              _FilterChip(
+                label: 'Absent',
+                count: _absentCount,
+                selected: _filter == _AttendanceFilter.absent,
+                onTap: () =>
+                    setState(() => _filter = _AttendanceFilter.absent),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+}
   // ─────────────────────────────────────────────────────────────────────
   // BODY
   // ─────────────────────────────────────────────────────────────────────

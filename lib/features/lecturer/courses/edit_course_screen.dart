@@ -2,7 +2,6 @@ import 'package:attendx/controllers/course_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/state/app_state.dart';
 import '../../../shared/models/course.dart';
 import '../../../shared/models/course_schedule.dart';
 import '../../../shared/widgets/app_button.dart';
@@ -122,8 +121,9 @@ class _EditCourseScreenState extends State<EditCourseScreen> {
                   keyboardType: TextInputType.number,
                   validator: (v) {
                     final n = double.tryParse(v ?? '');
-                    if (n == null || n <= 0 || n > 100)
+                    if (n == null || n <= 0 || n > 100) {
                       return 'Enter a value between 1–100';
+                    }
                     return null;
                   },
                 ),

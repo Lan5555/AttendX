@@ -503,7 +503,7 @@ class _HeroHeader extends StatelessWidget {
                     if (lecturer?.staffId != null) ...[
                       _InfoPill(
                         icon: Icons.badge_outlined,
-                        label: lecturer!.staffId!,
+                        label: lecturer!.staffId,
                       ),
                     ],
                     if (lecturer?.staffId != null &&
@@ -513,7 +513,7 @@ class _HeroHeader extends StatelessWidget {
                       Flexible(
                         child: _InfoPill(
                           icon: Icons.school_outlined,
-                          label: lecturer!.department!,
+                          label: lecturer!.department,
                         ),
                       ),
                   ],

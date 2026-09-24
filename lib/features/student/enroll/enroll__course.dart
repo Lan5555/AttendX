@@ -18,6 +18,7 @@ class _C {
   static const textSecondary = Color(0xFF5A6B82);
   static const textMuted = Color(0xFF8A9BB3);
   static const success = Color(0xFF16A34A);
+  static const successBg = Color(0xFFE4F6EE);
 }
 
 enum _SortOption {
@@ -59,6 +60,15 @@ extension _SortOptionX on _SortOption {
         _SortOption.unitsDesc => Icons.star_rounded,
         _SortOption.titleAsc => Icons.sort_by_alpha_rounded,
       };
+
+  bool get isFilter => switch (this) {
+        _SortOption.level100 ||
+        _SortOption.level200 ||
+        _SortOption.level300 ||
+        _SortOption.level400 =>
+          true,
+        _ => false,
+      };
 }
 
 class EnrollCoursesScreen extends StatefulWidget {
@@ -83,7 +93,7 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCatalogue();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCatalogue());
     _searchController.addListener(() => setState(() {}));
   }
 
@@ -94,41 +104,61 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
   }
 
   Future<void> _loadCatalogue() async {
+    if (!mounted) return;
+
     setState(() {
       _loading = true;
       _loadError = null;
     });
 
-    final response = await _courseService.fetchAllCourses();
+    try {
+      final response = await _courseService.fetchAllCourses();
+      if (!mounted) return;
 
-    if (!mounted) return;
+      if (!response.success) {
+        setState(() {
+          _loading = false;
+          _loadError = response.message;
+        });
+        return;
+      }
 
-    if (!response.success) {
+      final dynamic data = response.data;
+      List<dynamic> rawCourses;
+      if (data is List) {
+        rawCourses = data;
+      } else if (data is Map<String, dynamic> && data['items'] is List) {
+        rawCourses = data['items'] as List;
+      } else {
+        setState(() {
+          _loading = false;
+          _loadError = 'Invalid course data received from server.';
+        });
+        return;
+      }
+
+      final courses = <Course>[];
+      for (final item in rawCourses) {
+        if (item is! Map<String, dynamic>) continue;
+        try {
+          courses.add(Course.fromJson(item));
+        } catch (e) {
+          debugPrint('Failed to parse course: $e');
+        }
+      }
+
+      setState(() {
+        _catalogue = courses;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = response.message;
+        _loadError = 'Something went wrong loading courses.';
       });
-      return;
+      debugPrint('_loadCatalogue error: $e');
     }
-
-    final rawCourses = response.data['items'];
-
-    if (rawCourses is! List) {
-      setState(() {
-        _loading = false;
-        _loadError = 'Invalid course data received from server.';
-      });
-      return;
-    }
-
-    final courses = rawCourses
-        .map((course) => Course.fromJson(course as Map<String, dynamic>))
-        .toList();
-
-    setState(() {
-      _catalogue = courses;
-      _loading = false;
-    });
   }
 
   Future<void> _enroll(Course course) async {
@@ -160,14 +190,10 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
     );
   }
 
-  /// Derives a level from the first digit of the numeric part of the code.
-  /// "CSC 301" -> 300, "MTH 102" -> 100, "PHY 405" -> 400.
-  /// Returns 0 if no digit is found, so unparseable codes sort last.
   int _levelOf(Course course) {
     final match = RegExp(r'\d').firstMatch(course.code);
     if (match == null) return 0;
-    final firstDigit = int.parse(match.group(0)!);
-    return firstDigit * 100;
+    return int.parse(match.group(0)!) * 100;
   }
 
   List<Course> get _filtered {
@@ -185,8 +211,6 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
     switch (_sort) {
       case _SortOption.defaultOrder:
         return list;
-
-      // Level-band filters: keep only that band, sorted by code.
       case _SortOption.level100:
         return list.where((c) => _levelOf(c) == 100).toList()
           ..sort((a, b) => a.code.compareTo(b.code));
@@ -199,14 +223,12 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
       case _SortOption.level400:
         return list.where((c) => _levelOf(c) == 400).toList()
           ..sort((a, b) => a.code.compareTo(b.code));
-
       case _SortOption.levelAsc:
         list.sort((a, b) => _levelOf(a).compareTo(_levelOf(b)));
         return list;
       case _SortOption.levelDesc:
         list.sort((a, b) => _levelOf(b).compareTo(_levelOf(a)));
         return list;
-
       case _SortOption.department:
         list.sort((a, b) =>
             a.department.toLowerCase().compareTo(b.department.toLowerCase()));
@@ -221,23 +243,20 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
     }
   }
 
-  bool get _isLevelBand =>
-      _sort == _SortOption.level100 ||
-      _sort == _SortOption.level200 ||
-      _sort == _SortOption.level300 ||
-      _sort == _SortOption.level400;
-
   Future<void> _openSortSheet() async {
     final selected = await showModalBottomSheet<_SortOption>(
       context: context,
       backgroundColor: _C.white,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
+      builder: (sheetContext) {
         return SafeArea(
-          child: SingleChildScrollView(
-            
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(sheetContext).size.height * 0.75,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -252,7 +271,7 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Sort by',
+                  'Sort & Filter',
                   style: TextStyle(
                     color: _C.textPrimary,
                     fontSize: 15,
@@ -260,25 +279,33 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                for (final option in _SortOption.values)
-                  ListTile(
-                    leading: Icon(
-                      option.icon,
-                      color: option == _sort ? _C.blue : _C.textMuted,
-                    ),
-                    title: Text(
-                      option.label,
-                      style: TextStyle(
-                        color: option == _sort ? _C.blue : _C.textPrimary,
-                        fontWeight:
-                            option == _sort ? FontWeight.w700 : FontWeight.w500,
-                      ),
-                    ),
-                    trailing: option == _sort
-                        ? const Icon(Icons.check_rounded, color: _C.blue)
-                        : null,
-                    onTap: () => Navigator.of(context).pop(option),
+                Flexible(
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final option in _SortOption.values)
+                        ListTile(
+                          leading: Icon(
+                            option.icon,
+                            color: option == _sort ? _C.blue : _C.textMuted,
+                          ),
+                          title: Text(
+                            option.label,
+                            style: TextStyle(
+                              color: option == _sort ? _C.blue : _C.textPrimary,
+                              fontWeight: option == _sort
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                            ),
+                          ),
+                          trailing: option == _sort
+                              ? const Icon(Icons.check_rounded, color: _C.blue)
+                              : null,
+                          onTap: () => Navigator.of(sheetContext).pop(option),
+                        ),
+                    ],
                   ),
+                ),
                 const SizedBox(height: 8),
               ],
             ),
@@ -296,23 +323,10 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _C.white,
-      appBar: AppBar(
-        backgroundColor: _C.white,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        foregroundColor: _C.textPrimary,
-        title: const Text(
-          'Enroll in Courses',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: _C.textPrimary,
-          ),
-        ),
-      ),
       body: SafeArea(
         child: Column(
           children: [
-            _buildSearchBar(),
+            _buildHeader(),
             Expanded(child: _buildBody()),
           ],
         ),
@@ -320,55 +334,153 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
     );
   }
 
-  Widget _buildSearchBar() {
-    return Padding(
+  // ─────────────────────────────────────────────────────────────────────
+  // HEADER
+  // ─────────────────────────────────────────────────────────────────────
+  Widget _buildHeader() {
+    return Container(
       padding: const EdgeInsets.fromLTRB(
         AppSpacing.md,
-        AppSpacing.sm,
+        AppSpacing.md,
         AppSpacing.md,
         AppSpacing.md,
       ),
-      child: Row(
+      decoration: BoxDecoration(
+        color: _C.white,
+        border: Border(
+          bottom: BorderSide(color: _C.border, width: 1),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _searchController,
-              style: const TextStyle(color: _C.textPrimary),
-              decoration: InputDecoration(
-                hintText: 'Search by code, title, or department',
-                hintStyle: const TextStyle(color: _C.textMuted),
-                prefixIcon:
-                    const Icon(Icons.search_rounded, color: _C.textMuted),
-                suffixIcon: _searchController.text.isEmpty
-                    ? null
-                    : IconButton(
-                        icon: const Icon(Icons.close_rounded,
-                            color: _C.textMuted),
-                        onPressed: () => _searchController.clear(),
-                      ),
-                filled: true,
-                fillColor: _C.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  borderSide: BorderSide.none,
+          // Top row: back + title
+          Row(
+            children: [
+              IconButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                icon: const Icon(
+                  Icons.arrow_back_rounded,
+                  color: _C.textPrimary,
                 ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  borderSide: const BorderSide(color: _C.blue, width: 1.4),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                splashRadius: 22,
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Enroll in Courses',
+                  style: TextStyle(
+                    color: _C.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                  ),
                 ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          const Padding(
+            padding: EdgeInsets.only(left: 34),
+            child: Text(
+              'Browse the catalogue and join your courses.',
+              style: TextStyle(
+                color: _C.textSecondary,
+                fontSize: 13,
               ),
             ),
           ),
-          const SizedBox(width: 8),
-          _SortButton(
-            active: _sort != _SortOption.defaultOrder,
-            onTap: _openSortSheet,
+          const SizedBox(height: AppSpacing.md),
+
+          // Search + sort row
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  style: const TextStyle(
+                    color: _C.textPrimary,
+                    fontSize: 14,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search courses…',
+                    hintStyle: const TextStyle(
+                      color: _C.textMuted,
+                      fontSize: 13.5,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      size: 20,
+                      color: _C.textMuted,
+                    ),
+                    suffixIcon: _searchController.text.isEmpty
+                        ? null
+                        : IconButton(
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              size: 18,
+                              color: _C.textMuted,
+                            ),
+                            onPressed: () => _searchController.clear(),
+                          ),
+                    filled: true,
+                    fillColor: _C.surface,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      borderSide: BorderSide.none,
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      borderSide: const BorderSide(
+                        color: _C.blue,
+                        width: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _SortButton(
+                active: _sort != _SortOption.defaultOrder,
+                onTap: _openSortSheet,
+              ),
+            ],
           ),
+
+          // Active sort chip
+          if (_sort != _SortOption.defaultOrder) ...[
+            const SizedBox(height: AppSpacing.sm),
+            _ActiveSortChip(
+              label: _sort.label,
+              icon: _sort.icon,
+              isFilter: _sort.isFilter,
+              onClear: () => setState(() => _sort = _SortOption.defaultOrder),
+            ),
+          ],
+
+          // Result count
+          if (!_loading && _loadError == null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            Text(
+              '${_sorted.length} course${_sorted.length == 1 ? '' : 's'} available',
+              style: const TextStyle(
+                color: _C.textMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
 
+  // ─────────────────────────────────────────────────────────────────────
+  // BODY
+  // ─────────────────────────────────────────────────────────────────────
   Widget _buildBody() {
     if (_loading) {
       return const Center(
@@ -393,12 +505,15 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
       color: _C.blue,
       backgroundColor: _C.white,
       child: ListView.separated(
-        padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.md,
-          vertical: AppSpacing.sm,
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          AppSpacing.md,
+          AppSpacing.sm,
+          AppSpacing.md,
+          AppSpacing.lg,
         ),
         itemCount: courses.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        separatorBuilder: (_, __) => const SizedBox(height: 12),
         itemBuilder: (_, i) => _CourseEnrollCard(
           course: courses[i],
           enrolled: _enrolledIds.contains(courses[i].id),
@@ -416,12 +531,29 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_rounded, color: _C.textMuted, size: 48),
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: _C.surface,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.cloud_off_rounded,
+                color: _C.textMuted,
+                size: 30,
+              ),
+            ),
             const SizedBox(height: AppSpacing.md),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: _C.textSecondary, fontSize: 14),
+              style: const TextStyle(
+                color: _C.textSecondary,
+                fontSize: 14,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: AppSpacing.lg),
             AppButton(
@@ -438,13 +570,17 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
   Widget _buildEmptyState() {
     final searching = _searchController.text.trim().isNotEmpty;
 
+    final String title;
     final String message;
     if (searching) {
-      message = 'No courses match your search.';
-    } else if (_isLevelBand) {
-      message = 'No courses in this level yet.';
+      title = 'No matching courses';
+      message = 'Try a different code, title, or department.';
+    } else if (_sort.isFilter) {
+      title = 'No courses in this level';
+      message = 'Try another level from the sort menu.';
     } else {
-      message = 'No courses available right now.';
+      title = 'No courses available';
+      message = 'Check back later — new courses appear here when published.';
     }
 
     return Center(
@@ -453,16 +589,38 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              searching ? Icons.search_off_rounded : Icons.menu_book_rounded,
-              color: _C.textMuted,
-              size: 48,
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: _C.surface,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                searching ? Icons.search_off_rounded : Icons.menu_book_rounded,
+                color: _C.textMuted,
+                size: 30,
+              ),
             ),
             const SizedBox(height: AppSpacing.md),
             Text(
+              title,
+              style: const TextStyle(
+                color: _C.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: _C.textSecondary, fontSize: 14),
+              style: const TextStyle(
+                color: _C.textSecondary,
+                fontSize: 13,
+                height: 1.4,
+              ),
             ),
           ],
         ),
@@ -471,6 +629,9 @@ class _EnrollCoursesScreenState extends State<EnrollCoursesScreen> {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// SORT BUTTON
+// ─────────────────────────────────────────────────────────────────────
 class _SortButton extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
@@ -480,18 +641,36 @@ class _SortButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: active ? _C.blueSoft : _C.surface,
-      borderRadius: BorderRadius.circular(AppRadius.lg),
+      color: active ? _C.blue : _C.surface,
+      borderRadius: BorderRadius.circular(AppRadius.md),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
+        borderRadius: BorderRadius.circular(AppRadius.md),
         child: Container(
           width: 52,
           height: 52,
           alignment: Alignment.center,
-          child: Icon(
-            Icons.tune_rounded,
-            color: active ? _C.blue : _C.textMuted,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Icon(
+                Icons.tune_rounded,
+                color: active ? _C.white : _C.textMuted,
+              ),
+              if (active)
+                Positioned(
+                  top: -2,
+                  right: -2,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: _C.white,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),
@@ -499,6 +678,71 @@ class _SortButton extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// ACTIVE SORT CHIP
+// ─────────────────────────────────────────────────────────────────────
+class _ActiveSortChip extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool isFilter;
+  final VoidCallback onClear;
+
+  const _ActiveSortChip({
+    required this.label,
+    required this.icon,
+    required this.isFilter,
+    required this.onClear,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: _C.blueSoft,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _C.blue.withValues(alpha: .25)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: _C.blueDark),
+          const SizedBox(width: 6),
+          Text(
+            isFilter ? 'Filtered: $label' : 'Sorted: $label',
+            style: const TextStyle(
+              color: _C.blueDark,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(width: 6),
+          GestureDetector(
+            onTap: onClear,
+            child: Container(
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: _C.blue.withValues(alpha: .15),
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.close_rounded,
+                size: 11,
+                color: _C.blueDark,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// COURSE CARD
+// ─────────────────────────────────────────────────────────────────────
 class _CourseEnrollCard extends StatelessWidget {
   final Course course;
   final bool enrolled;
@@ -515,12 +759,12 @@ class _CourseEnrollCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
         color: _C.white,
         borderRadius: BorderRadius.circular(AppRadius.lg),
         border: Border.all(
-          color: enrolled ? _C.blue.withValues(alpha: .5) : _C.border,
+          color: enrolled ? _C.blue.withValues(alpha: .4) : _C.border,
+          width: enrolled ? 1.4 : 1,
         ),
         boxShadow: [
           BoxShadow(
@@ -530,86 +774,181 @@ class _CourseEnrollCard extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  course.code,
-                  style: const TextStyle(
-                    color: _C.textPrimary,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── Top row: code pill + status ─────────────────────────
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _C.blue.withValues(alpha: .1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    course.code,
+                    style: const TextStyle(
+                      color: _C.blue,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                    ),
                   ),
                 ),
-              ),
-              if (pending)
-                const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation(_C.blue),
-                  ),
-                )
-              else if (enrolled)
-                const _EnrolledPill(),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            course.title,
-            style: const TextStyle(
-              color: _C.textPrimary,
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
+                const Spacer(),
+                if (pending)
+                  const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation(_C.blue),
+                    ),
+                  )
+                else if (enrolled)
+                  const _EnrolledPill(),
+              ],
             ),
-          ),
-          if (course.description.isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(height: 10),
+
+            // ── Title ────────────────────────────────────────────────
             Text(
-              course.description,
+              course.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(color: _C.textSecondary, fontSize: 12.5),
+              style: const TextStyle(
+                color: _C.textPrimary,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                height: 1.25,
+              ),
             ),
-          ],
-          const SizedBox(height: AppSpacing.sm),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _MetaChip(icon: Icons.school_rounded, label: course.department),
-              _MetaChip(
-                icon: Icons.star_rounded,
-                label: '${course.creditUnits} units',
-              ),
-              _MetaChip(
-                icon: Icons.calendar_today_rounded,
-                label: course.schedule.day,
-              ),
-              _MetaChip(
-                icon: Icons.schedule_rounded,
-                label:
-                    '${course.schedule.startTime}–${course.schedule.endTime}',
-              ),
-              _MetaChip(
-                icon: Icons.place_rounded,
-                label: course.schedule.venue,
+
+            // ── Lecturer ─────────────────────────────────────────────
+            if (course.lecturerName.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.person_outline_rounded,
+                    size: 13,
+                    color: _C.textMuted,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      course.lecturerName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: _C.textSecondary,
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
+
+            // ── Description ──────────────────────────────────────────
+            if (course.description.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                course.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: _C.textSecondary,
+                  fontSize: 12.5,
+                  height: 1.4,
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+
+            // ── Meta chips ───────────────────────────────────────────
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                _MetaChip(
+                  icon: Icons.school_rounded,
+                  label: course.department,
+                ),
+                _MetaChip(
+                  icon: Icons.star_rounded,
+                  label: '${course.creditUnits} units',
+                ),
+                _MetaChip(
+                  icon: Icons.calendar_today_rounded,
+                  label: course.schedule.day,
+                ),
+                _MetaChip(
+                  icon: Icons.schedule_rounded,
+                  label: course.schedule.timeRangeLabel,
+                ),
+                _MetaChip(
+                  icon: Icons.place_rounded,
+                  label: course.schedule.venue,
+                ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.md),
+
+            // ── Enroll button ────────────────────────────────────────
+            SizedBox(
+              width: double.infinity,
+              child: AppButton(
+                label: enrolled ? 'Enrolled' : 'Enroll',
+                icon: enrolled
+                    ? Icons.check_circle_rounded
+                    : Icons.add_circle_outline_rounded,
+                onPressed: (enrolled || pending) ? null : onEnroll,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// ENROLLED PILL
+// ─────────────────────────────────────────────────────────────────────
+class _EnrolledPill extends StatelessWidget {
+  const _EnrolledPill();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: _C.successBg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: _C.success.withValues(alpha: .3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.check_circle_rounded,
+            size: 11,
+            color: _C.success,
           ),
-          const SizedBox(height: AppSpacing.md),
-          SizedBox(
-            width: double.infinity,
-            child: AppButton(
-              label: enrolled ? 'Enrolled' : 'Enroll',
-              icon: enrolled
-                  ? Icons.check_circle_rounded
-                  : Icons.add_circle_outline_rounded,
-              onPressed: (enrolled || pending) ? null : onEnroll,
+          const SizedBox(width: 4),
+          Text(
+            'Enrolled',
+            style: TextStyle(
+              color: _C.success,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -618,30 +957,9 @@ class _CourseEnrollCard extends StatelessWidget {
   }
 }
 
-class _EnrolledPill extends StatelessWidget {
-  const _EnrolledPill();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: _C.blueSoft,
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: _C.blue.withValues(alpha: .3)),
-      ),
-      child: const Text(
-        'Enrolled',
-        style: TextStyle(
-          color: _C.blueDark,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
+// ─────────────────────────────────────────────────────────────────────
+// META CHIP
+// ─────────────────────────────────────────────────────────────────────
 class _MetaChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -663,7 +981,11 @@ class _MetaChip extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             label,
-            style: const TextStyle(color: _C.textSecondary, fontSize: 11.5),
+            style: const TextStyle(
+              color: _C.textSecondary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),

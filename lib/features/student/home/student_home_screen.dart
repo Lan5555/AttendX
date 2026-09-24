@@ -10,7 +10,6 @@ import '../../../shared/models/student.dart';
 import '../../../shared/models/course.dart';
 import '../../../shared/mock/mock_data.dart';
 import '../../../shared/widgets/attendance_progress.dart';
-import '../../../shared/widgets/statistic_card.dart';
 import '../../../shared/widgets/status_badge.dart';
 import '../../../shared/widgets/offline_banner.dart';
 import '../../../shared/widgets/loading_state.dart';
@@ -61,11 +60,11 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
 
   Future<void> _load() async {
     if (!mounted) return;
-    final appState = context.read<CourseController>();
-    await appState.fetchStudentCourses();
+    final courseController = context.read<CourseController>();
+    await courseController.fetchStudentCourses();
     if (!mounted) return;
     setState(() {
-      _courses = appState.courses;
+      _courses = courseController.courses;
       _isLoading = false;
     });
     _fadeController.forward();
@@ -78,22 +77,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
     return 'Good evening';
   }
 
-  String _greetingEmoji() {
-    final hour = DateTime.now().hour;
-    if (hour < 12) return '☀️';
-    if (hour < 17) return '🌤️';
-    return '🌙';
-  }
-
   // ── Today's classes ─────────────────────────────────────────────────
-  /// Only courses scheduled for today's weekday, with a best-effort
-  /// session state derived from the schedule and current time.
   List<_TodayClass> get _todayClasses {
     final weekday = DateFormat('EEEE').format(DateTime.now());
     return _courses
         .where((c) => c.schedule.day.toLowerCase() == weekday.toLowerCase())
         .map((c) => _TodayClass(c, _inferState(c)))
-        .toList();
+        .toList()
+      ..sort((a, b) {
+        // Sort: attendance-open first, then upcoming, then completed, then missed.
+        int rank(ClassSessionState s) => switch (s) {
+              ClassSessionState.attendanceOpen => 0,
+              ClassSessionState.upcoming => 1,
+              ClassSessionState.completed => 2,
+              ClassSessionState.missed => 3,
+            };
+        return rank(a.state).compareTo(rank(b.state));
+      });
   }
 
   ClassSessionState _inferState(Course course) {
@@ -128,7 +128,6 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
       final dt = DateFormat('h:mm a').parseStrict(s.trim());
       return TimeOfDay(hour: dt.hour, minute: dt.minute);
     } catch (_) {
-      // Try "HH:mm" as a fallback.
       try {
         final dt = DateFormat('HH:mm').parseStrict(s.trim());
         return TimeOfDay(hour: dt.hour, minute: dt.minute);
@@ -140,10 +139,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    final appState = context.watch<AuthController>();
-    final student = appState.currentUser is Student
-        ? appState.currentUser as Student
+    final authState = context.watch<AuthController>();
+    final student = authState.currentUser is Student
+        ? authState.currentUser as Student
         : MockData.demoStudent;
+
+    final todayClasses = _todayClasses;
+    final hasOpenSession = todayClasses.any(
+      (c) => c.state == ClassSessionState.attendanceOpen,
+    );
 
     // Only count courses that have actually held sessions — otherwise a
     // fresh course (0/0) with no attendance yet would be flagged.
@@ -152,14 +156,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
         .where((c) => c.eligibility != AttendanceEligibility.eligible)
         .length;
 
-    final attended = _courses.fold<int>(0, (sum, c) => sum + c.classesAttended);
+    final attended =
+        _courses.fold<int>(0, (sum, c) => sum + c.classesAttended);
     final missed = _courses.fold<int>(0, (sum, c) => sum + c.classesMissed);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          OfflineBanner(isOnline: appState.isOnline),
+          OfflineBanner(isOnline: authState.isOnline),
           Expanded(
             child: _isLoading
                 ? const LoadingState(message: 'Loading your dashboard…')
@@ -169,119 +174,194 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                     backgroundColor: AppColors.surface,
                     child: FadeTransition(
                       opacity: _fadeAnimation,
-                      child: ListView(
+                      child: CustomScrollView(
                         physics: const BouncingScrollPhysics(
                           parent: AlwaysScrollableScrollPhysics(),
                         ),
-                        padding: const EdgeInsets.fromLTRB(
-                          AppSpacing.lg,
-                          AppSpacing.md,
-                          AppSpacing.lg,
-                          AppSpacing.lg,
-                        ),
-                        children: [
-                          _GreetingHeader(
-                            greeting: _greeting(),
-                            emoji: _greetingEmoji(),
-                            firstName: student.fullName.split(' ').first,
-                            studentId: student.studentId,
-                            semester: student.semester,
-                            isOnline: appState.isOnline,
+                        slivers: [
+                          // ── Hero header ───────────────────────────
+                          SliverToBoxAdapter(
+                            child: _Hero(
+                              greeting: _greeting(),
+                              student: student,
+                              todayCount: todayClasses.length,
+                              hasOpenSession: hasOpenSession,
+                            ),
                           ),
-                          const SizedBox(height: AppSpacing.lg),
-                          _OverallAttendanceCard(
-                            student: student,
-                            belowCount: below,
+
+                          // ── Overall attendance ────────────────────
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.lg,
+                              AppSpacing.lg,
+                              0,
+                            ),
+                            sliver: SliverToBoxAdapter(
+                              child: _OverallAttendanceCard(
+                                student: student,
+                                belowCount: below,
+                              ),
+                            ),
                           ),
-                          const SizedBox(height: AppSpacing.lg),
-                          _SectionHeader(
-                            title: "Today's Classes",
-                            subtitle: _todayClasses.isEmpty
-                                ? null
-                                : '${_todayClasses.length} session${_todayClasses.length == 1 ? '' : 's'}',
-                            icon: Icons.calendar_today_rounded,
+
+                          // ── Today's classes header ────────────────
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.xl,
+                              AppSpacing.lg,
+                              AppSpacing.sm,
+                            ),
+                            sliver: SliverToBoxAdapter(
+                              child: _SectionHeader(
+                                title: "Today's Classes",
+                                subtitle: todayClasses.isEmpty
+                                    ? null
+                                    : '${todayClasses.length}',
+                                icon: Icons.calendar_today_rounded,
+                              ),
+                            ),
                           ),
-                          const SizedBox(height: AppSpacing.sm),
-                          if (_todayClasses.isEmpty)
-                            const _EmptyState(
-                              icon: Icons.event_available_rounded,
-                              message: 'No classes scheduled for today',
-                              subtitle: 'Enjoy your free day! 🎉',
+
+                          // ── Today's classes list or empty ─────────
+                          if (todayClasses.isEmpty)
+                            const SliverPadding(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: AppSpacing.lg,
+                              ),
+                              sliver: SliverToBoxAdapter(
+                                child: _EmptyState(
+                                  icon: Icons.event_available_rounded,
+                                  message: 'No classes scheduled today',
+                                  subtitle: 'Enjoy your free day! 🎉',
+                                ),
+                              ),
                             )
                           else
-                            ..._todayClasses.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final tc = entry.value;
-                              return _AnimatedListItem(
-                                index: index,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(
-                                    bottom: AppSpacing.sm,
-                                  ),
-                                  child: _TodayClassCard(
-                                    data: tc,
-                                    onTap: () => Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => CourseDetailsScreen(
-                                          courseId: tc.course.id,
+                            SliverPadding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: AppSpacing.lg,
+                              ),
+                              sliver: SliverList.separated(
+                                itemCount: todayClasses.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: AppSpacing.sm),
+                                itemBuilder: (_, i) {
+                                  final tc = todayClasses[i];
+                                  return _AnimatedListItem(
+                                    index: i,
+                                    child: _TodayClassCard(
+                                      data: tc,
+                                      onTap: () =>
+                                          Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              CourseDetailsScreen(
+                                            courseId: tc.course.id,
+                                          ),
+                                        ),
+                                      ),
+                                      onMarkAttendance: () =>
+                                          Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) =>
+                                              MarkAttendanceFlow(
+                                            course: tc.course,
+                                          ),
+                                          fullscreenDialog: true,
                                         ),
                                       ),
                                     ),
-                                    onMarkAttendance: () =>
-                                        Navigator.of(context).push(
-                                      MaterialPageRoute(
-                                        builder: (_) => MarkAttendanceFlow(
-                                          course: tc.course,
-                                        ),
-                                        fullscreenDialog: true,
-                                      ),
+                                  );
+                                },
+                              ),
+                            ),
+
+                          // ── Summary header ────────────────────────
+                          const SliverPadding(
+                            padding: EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.xl,
+                              AppSpacing.lg,
+                              AppSpacing.sm,
+                            ),
+                            sliver: SliverToBoxAdapter(
+                              child: _SectionHeader(
+                                title: 'Attendance Summary',
+                                icon: Icons.insights_rounded,
+                              ),
+                            ),
+                          ),
+
+                          // ── Summary grid ──────────────────────────
+                          SliverPadding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.lg,
+                            ),
+                            sliver: SliverToBoxAdapter(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _SummaryTile(
+                                      label: 'Attended',
+                                      value: '$attended',
+                                      icon: Icons.check_circle_outline_rounded,
+                                      color: AppColors.success,
                                     ),
                                   ),
-                                ),
-                              );
-                            }),
-                          const SizedBox(height: AppSpacing.lg),
-                          const _SectionHeader(
-                            title: 'Attendance Summary',
-                            icon: Icons.insights_rounded,
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Expanded(
+                                    child: _SummaryTile(
+                                      label: 'Missed',
+                                      value: '$missed',
+                                      icon: Icons.cancel_outlined,
+                                      color: AppColors.error,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ),
-                          const SizedBox(height: AppSpacing.sm),
-                          GridView.count(
-                            crossAxisCount: 2,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            crossAxisSpacing: AppSpacing.sm,
-                            mainAxisSpacing: AppSpacing.sm,
-                            childAspectRatio: 1.45,
-                            children: [
-                              StatisticCard(
-                                label: 'Attended',
-                                value: '$attended',
-                                icon: Icons.check_circle_outline_rounded,
-                                accentColor: AppColors.success,
+                          SliverPadding(
+                            padding: const EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.sm,
+                              AppSpacing.lg,
+                              0,
+                            ),
+                            sliver: SliverToBoxAdapter(
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _SummaryTile(
+                                      label: 'Overall',
+                                      value:
+                                          '${student.overallAttendancePercentage.toStringAsFixed(0)}%',
+                                      icon:
+                                          Icons.pie_chart_outline_rounded,
+                                      color: AppColors.primary,
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.sm),
+                                  Expanded(
+                                    child: _SummaryTile(
+                                      label: 'At Risk',
+                                      value: '$below',
+                                      icon: Icons.warning_amber_rounded,
+                                      color: below > 0
+                                          ? AppColors.warning
+                                          : AppColors.textTertiary,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              StatisticCard(
-                                label: 'Missed',
-                                value: '$missed',
-                                icon: Icons.cancel_outlined,
-                                accentColor: AppColors.error,
-                              ),
-                              StatisticCard(
-                                label: 'Overall',
-                                value:
-                                    '${student.overallAttendancePercentage.toStringAsFixed(0)}%',
-                                icon: Icons.pie_chart_outline_rounded,
-                                accentColor: AppColors.primary,
-                              ),
-                              StatisticCard(
-                                label: 'At Risk',
-                                value: '$below',
-                                icon: Icons.warning_amber_rounded,
-                                accentColor: AppColors.warning,
-                              ),
-                            ],
+                            ),
                           ),
-                          const SizedBox(height: AppSpacing.xl),
+
+                          const SliverToBoxAdapter(
+                            child: SizedBox(height: AppSpacing.xl),
+                          ),
                         ],
                       ),
                     ),
@@ -294,80 +374,187 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Greeting Header
+// HERO HEADER
 // ─────────────────────────────────────────────────────────────────────
-class _GreetingHeader extends StatelessWidget {
+class _Hero extends StatelessWidget {
   final String greeting;
-  final String emoji;
-  final String firstName;
-  final String studentId;
-  final String semester;
-  final bool isOnline;
+  final Student student;
+  final int todayCount;
+  final bool hasOpenSession;
 
-  const _GreetingHeader({
+  const _Hero({
     required this.greeting,
-    required this.emoji,
-    required this.firstName,
-    required this.studentId,
-    required this.semester,
-    required this.isOnline,
+    required this.student,
+    required this.todayCount,
+    required this.hasOpenSession,
   });
+
+  String get _emoji {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return '☀️';
+    if (hour < 17) return '🌤️';
+    return '🌙';
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    final topPadding = MediaQuery.of(context).padding.top;
+    final firstName = student.fullName.split(' ').first;
+    final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : '?';
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        topPadding + AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.lg,
+      ),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.primaryLight.withValues(alpha: .16),
+            AppColors.primaryLight.withValues(alpha: .04),
+          ],
+        ),
+        borderRadius: const BorderRadius.vertical(
+          bottom: Radius.circular(28),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              const SizedBox(height: 30),
-              Row(
-                children: [
-                  Text(
-                    '$greeting, ',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w400,
-                          color: AppColors.textSecondary,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          '$greeting,',
+                          style: TextStyle(
+                            color: AppColors.textSecondary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
                         ),
-                  ),
-                  Flexible(
-                    child: Text(
+                        const SizedBox(width: 4),
+                        Text(_emoji, style: const TextStyle(fontSize: 16)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
                       firstName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style:
-                          Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.w700,
-                                color: AppColors.textPrimary,
-                              ),
+                      style: const TextStyle(
+                        color: AppColors.textPrimary,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.4,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(emoji, style: const TextStyle(fontSize: 22)),
-                ],
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _InfoPill(
+                          icon: Icons.badge_outlined,
+                          label: student.studentId,
+                        ),
+                        const SizedBox(width: 6),
+                        if (student.semester.isNotEmpty)
+                          Flexible(
+                            child: _InfoPill(
+                              icon: Icons.school_outlined,
+                              label: student.semester,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  _InfoChip(icon: Icons.badge_outlined, label: studentId),
-                  const SizedBox(width: 8),
-                  _InfoChip(icon: Icons.school_outlined, label: semester),
-                ],
+              const SizedBox(width: AppSpacing.md),
+              Container(
+                width: 60,
+                height: 60,
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: .3),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  initial,
+                  style: const TextStyle(
+                    color: AppColors.onPrimary,
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               ),
             ],
           ),
-        ),
-      ],
+
+          // Live session status strip
+          if (hasOpenSession) ...[
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: .12),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: AppColors.success.withValues(alpha: .3),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppColors.success,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  const Text(
+                    'Attendance is open now',
+                    style: TextStyle(
+                      color: AppColors.success,
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
 
-class _InfoChip extends StatelessWidget {
+class _InfoPill extends StatelessWidget {
   final IconData icon;
   final String label;
 
-  const _InfoChip({required this.icon, required this.label});
+  const _InfoPill({required this.icon, required this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -375,29 +562,33 @@ class _InfoChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.surface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.outline.withValues(alpha: .5)),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.outline),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 12, color: AppColors.textTertiary),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontSize: 9,
-                  color: AppColors.textSecondary,
-                ),
-          ),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 11, color: AppColors.textTertiary),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Overall Attendance Card
+// OVERALL ATTENDANCE CARD
 // ─────────────────────────────────────────────────────────────────────
 class _OverallAttendanceCard extends StatelessWidget {
   final Student student;
@@ -468,33 +659,36 @@ class _OverallAttendanceCard extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      'Overall Attendance',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleMedium
-                          ?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
+                    Expanded(
+                      child: Text(
+                        'Overall Attendance',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 14,
+                            ),
+                      ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
                 Text(
                   isGood
-                      ? "You're in good standing across your registered courses."
+                      ? "You're in good standing across your courses."
                       : 'Your attendance is below the required threshold in some courses.',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
                         height: 1.4,
+                        fontSize: 12.5,
                       ),
                 ),
                 const SizedBox(height: 10),
                 StatusBadge(
                   label: belowCount == 0
                       ? 'All courses on track'
-                      : '$belowCount course(s) below threshold',
+                      : '$belowCount course${belowCount == 1 ? '' : 's'} below threshold',
                   tone: belowCount == 0
                       ? StatusTone.success
                       : StatusTone.warning,
@@ -512,7 +706,7 @@ class _OverallAttendanceCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Section Header
+// SECTION HEADER
 // ─────────────────────────────────────────────────────────────────────
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -545,20 +739,20 @@ class _SectionHeader extends StatelessWidget {
               ),
         ),
         if (subtitle != null) ...[
-          const Spacer(),
+          const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: .08),
-              borderRadius: BorderRadius.circular(20),
+              color: AppColors.primary.withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
               subtitle!,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 11,
-                  ),
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w700,
+                fontSize: 11,
+              ),
             ),
           ),
         ],
@@ -568,7 +762,75 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Empty State
+// SUMMARY TILE
+// ─────────────────────────────────────────────────────────────────────
+class _SummaryTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _SummaryTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(color: AppColors.outline),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textTertiary,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// EMPTY STATE
 // ─────────────────────────────────────────────────────────────────────
 class _EmptyState extends StatelessWidget {
   final IconData icon;
@@ -589,7 +851,7 @@ class _EmptyState extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.outline.withValues(alpha: .5)),
+        border: Border.all(color: AppColors.outline),
       ),
       child: Column(
         children: [
@@ -605,7 +867,7 @@ class _EmptyState extends StatelessWidget {
           Text(
             message,
             style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
             textAlign: TextAlign.center,
           ),
@@ -625,7 +887,7 @@ class _EmptyState extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Animated List Item
+// ANIMATED LIST ITEM
 // ─────────────────────────────────────────────────────────────────────
 class _AnimatedListItem extends StatefulWidget {
   final int index;
@@ -685,7 +947,7 @@ class _AnimatedListItemState extends State<_AnimatedListItem>
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Today Class Card
+// TODAY CLASS CARD
 // ─────────────────────────────────────────────────────────────────────
 class _TodayClassCard extends StatefulWidget {
   final _TodayClass data;
@@ -755,7 +1017,7 @@ class _TodayClassCardState extends State<_TodayClassCard> {
           border: Border.all(
             color: isAttendanceOpen
                 ? AppColors.success.withValues(alpha: .4)
-                : AppColors.outline.withValues(alpha: .5),
+                : AppColors.outline,
             width: isAttendanceOpen ? 1.5 : 1,
           ),
           boxShadow: [
@@ -782,56 +1044,56 @@ class _TodayClassCardState extends State<_TodayClassCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        width: 3,
+                        width: 4,
                         height: 40,
+                        margin: const EdgeInsets.only(right: 12),
                         decoration: BoxDecoration(
                           color: accentColor,
                           borderRadius: BorderRadius.circular(2),
                         ),
                       ),
-                      const SizedBox(width: 12),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
                               course.code,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                    fontWeight: FontWeight.w700,
-                                    letterSpacing: 0.3,
-                                  ),
+                              style: const TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 0.3,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               course.title,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall
-                                  ?.copyWith(
-                                    color: AppColors.textSecondary,
-                                  ),
+                              style: const TextStyle(
+                                color: AppColors.textSecondary,
+                                fontSize: 12.5,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
                           ],
                         ),
                       ),
+                      const SizedBox(width: 8),
                       StatusBadge(label: label, tone: tone, icon: icon),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Row(
+                  const SizedBox(height: 14),
+                  Wrap(
+                    spacing: 14,
+                    runSpacing: 6,
                     children: [
                       _MetaItem(
                         icon: Icons.access_time_rounded,
                         text: course.schedule.timeRangeLabel,
                       ),
-                      const SizedBox(width: 16),
                       _MetaItem(
                         icon: Icons.location_on_outlined,
                         text: course.schedule.venue,
@@ -860,7 +1122,7 @@ class _TodayClassCardState extends State<_TodayClassCard> {
                         label: const Text(
                           'Mark Attendance',
                           style: TextStyle(
-                            fontWeight: FontWeight.w600,
+                            fontWeight: FontWeight.w700,
                             fontSize: 14,
                           ),
                         ),
@@ -878,7 +1140,7 @@ class _TodayClassCardState extends State<_TodayClassCard> {
 }
 
 // ─────────────────────────────────────────────────────────────────────
-// Meta Item
+// META ITEM
 // ─────────────────────────────────────────────────────────────────────
 class _MetaItem extends StatelessWidget {
   final IconData icon;
@@ -895,10 +1157,11 @@ class _MetaItem extends StatelessWidget {
         const SizedBox(width: 4),
         Text(
           text,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textTertiary,
-                fontSize: 12,
-              ),
+          style: const TextStyle(
+            color: AppColors.textTertiary,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );

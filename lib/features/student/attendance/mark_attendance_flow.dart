@@ -359,7 +359,7 @@ class _MarkAttendanceFlowState extends State<MarkAttendanceFlow> {
                     },
                   ),
                 ),
-                //const QrScannerFrame(),
+                const QrScannerFrame(),
               ],
             ),
           ),

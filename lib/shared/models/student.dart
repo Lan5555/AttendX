@@ -36,6 +36,8 @@ class Student extends AppUser {
     );
   }
 
+  
+
   @override
   Map<String, dynamic> toJson() {
     return {

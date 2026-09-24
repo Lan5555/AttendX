@@ -16,4 +16,8 @@ class AuthService extends CoreService {
   Future<APIResponse> registerLecturer(Map<String, dynamic> payload) async {
     return await send('/auth/register/lecturer', body: payload);
   }
+
+  Future<APIResponse> pingServer() async {
+    return await fetch('/auth/ping-server');
+  }
 }

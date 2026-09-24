@@ -37,26 +37,36 @@ class Course {
     this.attendanceThreshold = 75.0,
   });
 
-  factory Course.fromJson(Map<String, dynamic> json) {
-    final lecturer = json['lecturer'] as Map<String, dynamic>?;
+ factory Course.fromJson(Map<String, dynamic> json) {
+  // Guard the lecturer — it may be missing or null.
+  final lecturerRaw = json['lecturer'];
+  final lecturer =
+      lecturerRaw is Map<String, dynamic> ? lecturerRaw : null;
 
-    return Course(
-      id: json['id']?.toString() ?? '',
-      code: json['code']?.toString() ?? '',
-      title: json['title']?.toString() ?? '',
-      description: json['description']?.toString() ?? '',
-      lecturerName: lecturer?['fullName']?.toString() ?? 'Unknown Lecturer',
-      creditUnits: (json['creditUnits'] as num?)?.toInt() ?? 0,
-      department: json['department']?.toString() ?? '',
-      schedule: CourseSchedule.fromJson(json['schedule']),
-      maxStudents: (json['maxStudents'] as num?)?.toInt() ?? 120,
-      enrolledStudents: (json['enrolledStudents'] as num?)?.toInt() ?? 0,
-      classesHeld: (json['classesHeld'] as num?)?.toInt() ?? 0,
-      classesAttended: (json['classesAttended'] as num?)?.toInt() ?? 0,
-      attendanceThreshold:
-          (json['attendanceThreshold'] as num?)?.toDouble() ?? 75.0,
-    );
-  }
+  return Course(
+    id: json['id']?.toString() ?? '',
+    code: json['code']?.toString() ?? '',
+    title: json['title']?.toString() ?? '',
+    description: json['description']?.toString() ?? '',
+    lecturerName:
+        lecturer?['fullName']?.toString() ?? 'Unknown Lecturer',
+    creditUnits: (json['creditUnits'] as num?)?.toInt() ?? 0,
+    department: json['department']?.toString() ?? '',
+    schedule: CourseSchedule(
+      day: json['scheduleDay']?.toString() ?? '',
+      startTime: json['scheduleStartTime']?.toString() ?? '',
+      endTime: json['scheduleEndTime']?.toString() ?? '',
+      recurringWeekly: json['scheduleRecurringWeekly'] as bool? ?? true,
+      venue: json['venue']?.toString() ?? 'TBA',
+    ),
+    maxStudents: (json['maxStudents'] as num?)?.toInt() ?? 120,
+    enrolledStudents: (json['enrolledStudents'] as num?)?.toInt() ?? 0,
+    classesHeld: (json['classesHeld'] as num?)?.toInt() ?? 0,
+    classesAttended: (json['classesAttended'] as num?)?.toInt() ?? 0,
+    attendanceThreshold:
+        (json['attendanceThreshold'] as num?)?.toDouble() ?? 75.0,
+  );
+}
 
   Map<String, dynamic> toJson() => {
         'id': id,
