@@ -1,13 +1,22 @@
+import 'dart:io';
+
 import 'package:attendx/controllers/auth_controller.dart';
 import 'package:attendx/services/auth_service.dart';
 import 'package:attendx/services/biometric_service.dart';
 import 'package:attendx/shared/models/lecturer.dart';
 import 'package:attendx/shared/models/student.dart';
+import 'package:attendx/shared/widgets/liveness_card.dart';
+import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_liveness_detection/flutter_liveness_detection.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:go_router/go_router.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
@@ -35,6 +44,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       TextEditingController(text: 'Faculty of Computing');
   final TextEditingController _titleController =
       TextEditingController(text: 'Dr');
+  File? imageFile;
 
   bool _isLoading = false;
 
@@ -44,12 +54,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String? _biometricToken;
   List<BiometricType> _availableBiometrics = [];
   FlutterSecureStorage? _storage;
+  String? _livenessImageKey;
 
   @override
   void initState() {
     super.initState();
     _checkBiometricSupport();
+    requestCameraPermission();
     _storage = const FlutterSecureStorage();
+  }
+
+  Future<void> requestCameraPermission() async {
+    final status = await Permission.camera.request();
+    if (!status.isGranted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Please enable Camera')));
+    }
   }
 
   @override
@@ -127,7 +147,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       "password": _passwordController.text,
       "department": _departmentController.text.trim(),
       "faculty": _facultyController.text.trim(),
-      "biometricToken": _biometricToken,
+      "biometricToken": _livenessImageKey,
       "title": '${_titleController.text.trim()}.'
     };
     final auth = context.read<AuthController>();
@@ -189,12 +209,23 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   0,
                 ),
                 sliver: SliverToBoxAdapter(
-                  child: _BiometricEnrollmentCard(
-                    supported: _biometricSupported,
-                    captured: _biometricCaptured,
-                    capturing: _capturingBiometric,
-                    availableBiometrics: _availableBiometrics,
-                    onCapture: _captureBiometric,
+                  // child: _BiometricEnrollmentCard(
+                  //   supported: _biometricSupported,
+                  //   captured: _biometricCaptured,
+                  //   capturing: _capturingBiometric,
+                  //   availableBiometrics: _availableBiometrics,
+                  //   onCapture: _captureBiometric,
+                  // ),
+                  child: LivenessCaptureCard(
+                    onCaptured: (key, image) => setState(() {
+                      _livenessImageKey = key;
+                      _biometricCaptured = true;
+                    }),
+                    onCancelled: () {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Operation Cancelled')));
+                    },
+                    requiredCheck: false,
                   ),
                 ),
               ),
@@ -238,7 +269,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               : null,
                         ),
                         if (_selectedRole == UserRole.lecturer) ...[
-                          _Field(label: 'Title', controller: _titleController, icon: Icons.title,)
+                          _Field(
+                            label: 'Title',
+                            controller: _titleController,
+                            icon: Icons.title,
+                          )
                         ],
                         const SizedBox(height: AppSpacing.md),
                         _Field(
@@ -879,7 +914,7 @@ class _BiometricEnrollmentCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      captured ? 'Biometric enrolled' : 'Biometric (required)',
+                      captured ? 'Liveness enrolled' : 'Biometric (required)',
                       style: TextStyle(
                         fontWeight: FontWeight.w700,
                         fontSize: 14,

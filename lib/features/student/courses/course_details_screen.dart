@@ -1,5 +1,6 @@
 import 'package:attendx/controllers/attendance_controller.dart';
 import 'package:attendx/controllers/course_controller.dart';
+import 'package:attendx/shared/widgets/liveness_card.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../core/theme/app_colors.dart';
@@ -25,6 +26,9 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
   List<AttendanceRecord> _history = [];
   bool _isLoading = true;
   String? _errorMessage;
+  bool _shouldTakeLivenessTest = true;
+  String? _livenessImageKey;
+  bool _hasTakenLivenessTest = false;
 
   @override
   void initState() {
@@ -47,7 +51,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
       await courseController.findCourseById(widget.courseId);
       final course = courseController.courseData;
 
-       attendanceHandler.fetchStudentAttendanceHistory();
+      attendanceHandler.fetchStudentAttendanceHistory();
 
       // Scope the history to this course only.
       final history = course == null
@@ -77,9 +81,7 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     final now = DateTime.now();
     return _history.any((r) {
       final d = r.date;
-      return d.year == now.year &&
-          d.month == now.month &&
-          d.day == now.day;
+      return d.year == now.year && d.month == now.month && d.day == now.day;
     });
   }
 
@@ -149,199 +151,233 @@ class _CourseDetailsScreenState extends State<CourseDetailsScreen> {
     }
 
     return Scaffold(
+      appBar: _shouldTakeLivenessTest ? AppBar(leading: IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.arrow_back)),) : null,
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _load,
-          color: AppColors.primary,
-          backgroundColor: AppColors.surface,
-          child: CustomScrollView(
-            physics: const BouncingScrollPhysics(
-              parent: AlwaysScrollableScrollPhysics(),
-            ),
-            slivers: [
-              SliverToBoxAdapter(
-                child: _CourseHero(course: course),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  0,
-                ),
-                sliver: SliverToBoxAdapter(
-                  child: _AttendanceCard(course: course),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.md,
-                  AppSpacing.lg,
-                  0,
-                ),
-                sliver: SliverToBoxAdapter(
-                  child: Row(
-                    children: [
-                      _MiniStat(
-                        label: 'Held',
-                        value: '${course.classesHeld}',
-                        color: AppColors.info,
-                        icon: Icons.event_available_rounded,
-                      ),
-                      const SizedBox(width: 8),
-                      _MiniStat(
-                        label: 'Attended',
-                        value: '${course.classesAttended}',
-                        color: AppColors.success,
-                        icon: Icons.check_circle_outline_rounded,
-                      ),
-                      const SizedBox(width: 8),
-                      _MiniStat(
-                        label: 'Missed',
-                        value: '${course.classesMissed}',
-                        color: AppColors.error,
-                        icon: Icons.cancel_outlined,
-                      ),
-                    ],
+      body: _shouldTakeLivenessTest
+          ? Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(26.0),
+                child: LivenessCaptureCard(
+                    onCaptured: (key, image) {
+                      setState(() {
+                        _livenessImageKey = key;
+                        _shouldTakeLivenessTest = false;
+                        _hasTakenLivenessTest = true;
+                      });
+                    },
+                    onCancelled: () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Operation canceled'),
+                        backgroundColor: Colors.red,
+                      ));
+                    },
+                    requiredCheck: true,
                   ),
-                ),
-              ),
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  0,
-                ),
-                sliver: SliverToBoxAdapter(
-                  child: _CourseInfoCard(course: course),
-                ),
-              ),
-
-              // ── Mark Attendance CTA (conditional) ──────────────────
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                  0,
-                ),
-                sliver: SliverToBoxAdapter(
-                  child: _hasMarkedToday
-                      ? const _MarkedTodayBanner()
-                      : SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton.icon(
-                            onPressed: () async {
-                              await Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) =>
-                                      MarkAttendanceFlow(course: course),
-                                  fullscreenDialog: true,
-                                ),
-                              );
-                              if (mounted) _load();
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: AppColors.onPrimary,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius:
-                                    BorderRadius.circular(AppRadius.md),
-                              ),
-                            ),
-                            icon: const Icon(
-                              Icons.qr_code_scanner_rounded,
-                              size: 20,
-                            ),
-                            label: const Text(
-                              'Mark Attendance',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-
-              // ── History header ────────────────────────────────────
-              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.xl,
-                  AppSpacing.lg,
-                  AppSpacing.sm,
-                ),
-                sliver: SliverToBoxAdapter(
-                  child: Row(
-                    children: [
-                      const Text(
-                        'Attendance History',
-                        style: TextStyle(
-                          color: AppColors.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: .1),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: Text(
-                          '${_history.length}',
-                          style: const TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── History list or empty ─────────────────────────────
-              if (_history.isEmpty)
-                const SliverPadding(
-                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-                  sliver: SliverToBoxAdapter(child: _EmptyHistory()),
-                )
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppSpacing.lg,
-                  ),
-                  sliver: SliverList.separated(
-                    itemCount: _history.length,
-                    separatorBuilder: (_, __) =>
-                        const SizedBox(height: AppSpacing.sm),
-                    itemBuilder: (_, i) => AttendanceRecordCard(
-                      record: _history[i],
-                      showCourse: false,
-                    ),
-                  ),
-                ),
-
-              const SliverToBoxAdapter(
-                child: SizedBox(height: AppSpacing.xl),
               ),
             ],
-          ),
-        ),
-      ),
+          )
+          : SafeArea(
+              child: RefreshIndicator(
+                onRefresh: _load,
+                color: AppColors.primary,
+                backgroundColor: AppColors.surface,
+                child: CustomScrollView(
+                  physics: const BouncingScrollPhysics(
+                    parent: AlwaysScrollableScrollPhysics(),
+                  ),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: _CourseHero(course: course),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: _AttendanceCard(course: course),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.md,
+                        AppSpacing.lg,
+                        0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: Row(
+                          children: [
+                            _MiniStat(
+                              label: 'Held',
+                              value: '${course.classesHeld}',
+                              color: AppColors.info,
+                              icon: Icons.event_available_rounded,
+                            ),
+                            const SizedBox(width: 8),
+                            _MiniStat(
+                              label: 'Attended',
+                              value: '${course.classesAttended}',
+                              color: AppColors.success,
+                              icon: Icons.check_circle_outline_rounded,
+                            ),
+                            const SizedBox(width: 8),
+                            _MiniStat(
+                              label: 'Missed',
+                              value: '${course.classesMissed}',
+                              color: AppColors.error,
+                              icon: Icons.cancel_outlined,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: _CourseInfoCard(course: course),
+                      ),
+                    ),
+
+                    // ── Mark Attendance CTA (conditional) ──────────────────
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        AppSpacing.lg,
+                        0,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: _hasMarkedToday
+                            ? const _MarkedTodayBanner()
+                            : SizedBox(
+                                width: double.infinity,
+                                height: 52,
+                                child: ElevatedButton.icon(
+                                  onPressed: () async {
+                                    if (!_shouldTakeLivenessTest && !_hasTakenLivenessTest) {
+                                      setState(() {
+                                        _shouldTakeLivenessTest = true;
+                                       
+                                      });
+                                       return;
+                                    }
+                                    await Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) =>
+                                            MarkAttendanceFlow(course: course),
+                                        fullscreenDialog: true,
+                                      ),
+                                    );
+                                    if (mounted) _load();
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: AppColors.onPrimary,
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius:
+                                          BorderRadius.circular(AppRadius.md),
+                                    ),
+                                  ),
+                                  icon: const Icon(
+                                    Icons.qr_code_scanner_rounded,
+                                    size: 20,
+                                  ),
+                                  label: const Text(
+                                    'Mark Attendance',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+
+                    // ── History header ────────────────────────────────────
+                    SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AppSpacing.lg,
+                        AppSpacing.xl,
+                        AppSpacing.lg,
+                        AppSpacing.sm,
+                      ),
+                      sliver: SliverToBoxAdapter(
+                        child: Row(
+                          children: [
+                            const Text(
+                              'Attendance History',
+                              style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: .1),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${_history.length}',
+                                style: const TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // ── History list or empty ─────────────────────────────
+                    if (_history.isEmpty)
+                      const SliverPadding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                        sliver: SliverToBoxAdapter(child: _EmptyHistory()),
+                      )
+                    else
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                        ),
+                        sliver: SliverList.separated(
+                          itemCount: _history.length,
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: AppSpacing.sm),
+                          itemBuilder: (_, i) => AttendanceRecordCard(
+                            record: _history[i],
+                            showCourse: false,
+                          ),
+                        ),
+                      ),
+
+                    const SliverToBoxAdapter(
+                      child: SizedBox(height: AppSpacing.xl),
+                    ),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 }

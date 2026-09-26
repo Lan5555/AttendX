@@ -1,5 +1,6 @@
 import 'package:attendx/controllers/auth_controller.dart';
 import 'package:attendx/controllers/course_controller.dart';
+import 'package:attendx/shared/widgets/liveness_card.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -37,6 +38,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   List<Course> _courses = [];
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
+  bool _shouldTakeLivenessTest = false;
+  String? _livenessImageKey;
+  bool _hasTakenLivenessTest = false;
 
   @override
   void initState() {
@@ -156,219 +160,260 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
         .where((c) => c.eligibility != AttendanceEligibility.eligible)
         .length;
 
-    final attended =
-        _courses.fold<int>(0, (sum, c) => sum + c.classesAttended);
+    final attended = _courses.fold<int>(0, (sum, c) => sum + c.classesAttended);
     final missed = _courses.fold<int>(0, (sum, c) => sum + c.classesMissed);
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          OfflineBanner(isOnline: authState.isOnline),
-          Expanded(
-            child: _isLoading
-                ? const LoadingState(message: 'Loading your dashboard…')
-                : RefreshIndicator(
-                    onRefresh: _load,
-                    color: AppColors.primary,
-                    backgroundColor: AppColors.surface,
-                    child: FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: CustomScrollView(
-                        physics: const BouncingScrollPhysics(
-                          parent: AlwaysScrollableScrollPhysics(),
-                        ),
-                        slivers: [
-                          // ── Hero header ───────────────────────────
-                          SliverToBoxAdapter(
-                            child: _Hero(
-                              greeting: _greeting(),
-                              student: student,
-                              todayCount: todayClasses.length,
-                              hasOpenSession: hasOpenSession,
-                            ),
-                          ),
-
-                          // ── Overall attendance ────────────────────
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.lg,
-                              AppSpacing.lg,
-                              AppSpacing.lg,
-                              0,
-                            ),
-                            sliver: SliverToBoxAdapter(
-                              child: _OverallAttendanceCard(
-                                student: student,
-                                belowCount: below,
-                              ),
-                            ),
-                          ),
-
-                          // ── Today's classes header ────────────────
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.lg,
-                              AppSpacing.xl,
-                              AppSpacing.lg,
-                              AppSpacing.sm,
-                            ),
-                            sliver: SliverToBoxAdapter(
-                              child: _SectionHeader(
-                                title: "Today's Classes",
-                                subtitle: todayClasses.isEmpty
-                                    ? null
-                                    : '${todayClasses.length}',
-                                icon: Icons.calendar_today_rounded,
-                              ),
-                            ),
-                          ),
-
-                          // ── Today's classes list or empty ─────────
-                          if (todayClasses.isEmpty)
-                            const SliverPadding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: AppSpacing.lg,
-                              ),
-                              sliver: SliverToBoxAdapter(
-                                child: _EmptyState(
-                                  icon: Icons.event_available_rounded,
-                                  message: 'No classes scheduled today',
-                                  subtitle: 'Enjoy your free day! 🎉',
-                                ),
-                              ),
-                            )
-                          else
-                            SliverPadding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: AppSpacing.lg,
-                              ),
-                              sliver: SliverList.separated(
-                                itemCount: todayClasses.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: AppSpacing.sm),
-                                itemBuilder: (_, i) {
-                                  final tc = todayClasses[i];
-                                  return _AnimatedListItem(
-                                    index: i,
-                                    child: _TodayClassCard(
-                                      data: tc,
-                                      onTap: () =>
-                                          Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              CourseDetailsScreen(
-                                            courseId: tc.course.id,
-                                          ),
-                                        ),
-                                      ),
-                                      onMarkAttendance: () =>
-                                          Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                          builder: (_) =>
-                                              MarkAttendanceFlow(
-                                            course: tc.course,
-                                          ),
-                                          fullscreenDialog: true,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-
-                          // ── Summary header ────────────────────────
-                          const SliverPadding(
-                            padding: EdgeInsets.fromLTRB(
-                              AppSpacing.lg,
-                              AppSpacing.xl,
-                              AppSpacing.lg,
-                              AppSpacing.sm,
-                            ),
-                            sliver: SliverToBoxAdapter(
-                              child: _SectionHeader(
-                                title: 'Attendance Summary',
-                                icon: Icons.insights_rounded,
-                              ),
-                            ),
-                          ),
-
-                          // ── Summary grid ──────────────────────────
-                          SliverPadding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppSpacing.lg,
-                            ),
-                            sliver: SliverToBoxAdapter(
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: _SummaryTile(
-                                      label: 'Attended',
-                                      value: '$attended',
-                                      icon: Icons.check_circle_outline_rounded,
-                                      color: AppColors.success,
-                                    ),
-                                  ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Expanded(
-                                    child: _SummaryTile(
-                                      label: 'Missed',
-                                      value: '$missed',
-                                      icon: Icons.cancel_outlined,
-                                      color: AppColors.error,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                          SliverPadding(
-                            padding: const EdgeInsets.fromLTRB(
-                              AppSpacing.lg,
-                              AppSpacing.sm,
-                              AppSpacing.lg,
-                              0,
-                            ),
-                            sliver: SliverToBoxAdapter(
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: _SummaryTile(
-                                      label: 'Overall',
-                                      value:
-                                          '${student.overallAttendancePercentage.toStringAsFixed(0)}%',
-                                      icon:
-                                          Icons.pie_chart_outline_rounded,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                                  const SizedBox(width: AppSpacing.sm),
-                                  Expanded(
-                                    child: _SummaryTile(
-                                      label: 'At Risk',
-                                      value: '$below',
-                                      icon: Icons.warning_amber_rounded,
-                                      color: below > 0
-                                          ? AppColors.warning
-                                          : AppColors.textTertiary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-
-                          const SliverToBoxAdapter(
-                            child: SizedBox(height: AppSpacing.xl),
-                          ),
-                        ],
-                      ),
-                    ),
+      body: _shouldTakeLivenessTest
+          ? Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(26.0),
+                  child: LivenessCaptureCard(
+                    onCaptured: (key, image) {
+                      setState(() {
+                        _livenessImageKey = key;
+                        _shouldTakeLivenessTest = false;
+                        _hasTakenLivenessTest = true;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('User verified, kindly proceed.'),
+                        backgroundColor: Colors.green,
+                      ));
+                    },
+                    onCancelled: () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                        content: Text('Operation canceled'),
+                        backgroundColor: Colors.red,
+                      ));
+                      setState(() {
+                        _hasTakenLivenessTest = false;
+                        _shouldTakeLivenessTest = false;
+                      });
+                    },
+                    requiredCheck: true,
                   ),
-          ),
-        ],
-      ),
+                ),
+              ],
+            )
+          : Column(
+              children: [
+                OfflineBanner(isOnline: authState.isOnline),
+                Expanded(
+                  child: _isLoading
+                      ? const LoadingState(message: 'Loading your dashboard…')
+                      : RefreshIndicator(
+                          onRefresh: _load,
+                          color: AppColors.primary,
+                          backgroundColor: AppColors.surface,
+                          child: FadeTransition(
+                            opacity: _fadeAnimation,
+                            child: CustomScrollView(
+                              physics: const BouncingScrollPhysics(
+                                parent: AlwaysScrollableScrollPhysics(),
+                              ),
+                              slivers: [
+                                // ── Hero header ───────────────────────────
+                                SliverToBoxAdapter(
+                                  child: _Hero(
+                                    greeting: _greeting(),
+                                    student: student,
+                                    todayCount: todayClasses.length,
+                                    hasOpenSession: hasOpenSession,
+                                  ),
+                                ),
+
+                                // ── Overall attendance ────────────────────
+                                SliverPadding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    AppSpacing.lg,
+                                    AppSpacing.lg,
+                                    AppSpacing.lg,
+                                    0,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: _OverallAttendanceCard(
+                                      student: student,
+                                      belowCount: below,
+                                    ),
+                                  ),
+                                ),
+
+                                // ── Today's classes header ────────────────
+                                SliverPadding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    AppSpacing.lg,
+                                    AppSpacing.xl,
+                                    AppSpacing.lg,
+                                    AppSpacing.sm,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: _SectionHeader(
+                                      title: "Today's Classes",
+                                      subtitle: todayClasses.isEmpty
+                                          ? null
+                                          : '${todayClasses.length}',
+                                      icon: Icons.calendar_today_rounded,
+                                    ),
+                                  ),
+                                ),
+
+                                // ── Today's classes list or empty ─────────
+                                if (todayClasses.isEmpty)
+                                  const SliverPadding(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: AppSpacing.lg,
+                                    ),
+                                    sliver: SliverToBoxAdapter(
+                                      child: _EmptyState(
+                                        icon: Icons.event_available_rounded,
+                                        message: 'No classes scheduled today',
+                                        subtitle: 'Enjoy your free day! 🎉',
+                                      ),
+                                    ),
+                                  )
+                                else
+                                  SliverPadding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: AppSpacing.lg,
+                                    ),
+                                    sliver: SliverList.separated(
+                                      itemCount: todayClasses.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(height: AppSpacing.sm),
+                                      itemBuilder: (_, i) {
+                                        final tc = todayClasses[i];
+                                        return _AnimatedListItem(
+                                          index: i,
+                                          child: _TodayClassCard(
+                                              data: tc,
+                                              onTap: () =>
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (_) =>
+                                                          CourseDetailsScreen(
+                                                        courseId: tc.course.id,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              onMarkAttendance: () {
+                                                if (!_shouldTakeLivenessTest &&
+                                                    !_hasTakenLivenessTest) {
+                                                  setState(() {
+                                                    _shouldTakeLivenessTest =
+                                                        true;
+                                                  });
+                                                  return;
+                                                }
+                                                Navigator.of(context).push(
+                                                  MaterialPageRoute(
+                                                    builder: (_) =>
+                                                        MarkAttendanceFlow(
+                                                      course: tc.course,
+                                                    ),
+                                                    fullscreenDialog: true,
+                                                  ),
+                                                );
+                                              }),
+                                        );
+                                      },
+                                    ),
+                                  ),
+
+                                // ── Summary header ────────────────────────
+                                const SliverPadding(
+                                  padding: EdgeInsets.fromLTRB(
+                                    AppSpacing.lg,
+                                    AppSpacing.xl,
+                                    AppSpacing.lg,
+                                    AppSpacing.sm,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: _SectionHeader(
+                                      title: 'Attendance Summary',
+                                      icon: Icons.insights_rounded,
+                                    ),
+                                  ),
+                                ),
+
+                                // ── Summary grid ──────────────────────────
+                                SliverPadding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.lg,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: _SummaryTile(
+                                            label: 'Attended',
+                                            value: '$attended',
+                                            icon: Icons
+                                                .check_circle_outline_rounded,
+                                            color: AppColors.success,
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppSpacing.sm),
+                                        Expanded(
+                                          child: _SummaryTile(
+                                            label: 'Missed',
+                                            value: '$missed',
+                                            icon: Icons.cancel_outlined,
+                                            color: AppColors.error,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                SliverPadding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    AppSpacing.lg,
+                                    AppSpacing.sm,
+                                    AppSpacing.lg,
+                                    0,
+                                  ),
+                                  sliver: SliverToBoxAdapter(
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: _SummaryTile(
+                                            label: 'Overall',
+                                            value:
+                                                '${student.overallAttendancePercentage.toStringAsFixed(0)}%',
+                                            icon:
+                                                Icons.pie_chart_outline_rounded,
+                                            color: AppColors.primary,
+                                          ),
+                                        ),
+                                        const SizedBox(width: AppSpacing.sm),
+                                        Expanded(
+                                          child: _SummaryTile(
+                                            label: 'At Risk',
+                                            value: '$below',
+                                            icon: Icons.warning_amber_rounded,
+                                            color: below > 0
+                                                ? AppColors.warning
+                                                : AppColors.textTertiary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+
+                                const SliverToBoxAdapter(
+                                  child: SizedBox(height: AppSpacing.xl),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
     );
   }
 }
@@ -435,7 +480,7 @@ class _Hero extends StatelessWidget {
                       children: [
                         Text(
                           '$greeting,',
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
@@ -662,13 +707,11 @@ class _OverallAttendanceCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Overall Attendance',
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleMedium
-                            ?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                            ),
+                        style:
+                            Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 14,
+                                ),
                       ),
                     ),
                   ],
@@ -689,9 +732,8 @@ class _OverallAttendanceCard extends StatelessWidget {
                   label: belowCount == 0
                       ? 'All courses on track'
                       : '$belowCount course${belowCount == 1 ? '' : 's'} below threshold',
-                  tone: belowCount == 0
-                      ? StatusTone.success
-                      : StatusTone.warning,
+                  tone:
+                      belowCount == 0 ? StatusTone.success : StatusTone.warning,
                   icon: belowCount == 0
                       ? Icons.check_circle_rounded
                       : Icons.warning_amber_rounded,
